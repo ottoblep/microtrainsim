@@ -46,31 +46,29 @@ function traj = constructTrajectory(params, solution)
                 if abort < 10
                    disp("oh oh");
                 end
-                current_edge = traj(i_train, timestep, 1);
                 current_edge_length = params.edge_values(traj(i_train, timestep, 1));
-                current_edge_progress = traj(i_train, timestep, 2);
 
-                remaining_forward_length = (1 - current_edge_progress) * current_edge_length;
-                remaining_backward_length = current_edge_progress * current_edge_length;
+                remaining_forward_length = (1 - traj(i_train, timestep, 2)) * current_edge_length;
+                remaining_backward_length = traj(i_train, timestep, 2) * current_edge_length;
 
                 if abs(remaining_movement) < 1e-10
                     remaining_movement = 0;
                 end
 
-                if remaining_movement > remaining_forward_length | remaining_movement < -remaining_backward_length
+                if (remaining_movement > remaining_forward_length) || (remaining_movement < -remaining_backward_length)
                     % Leave edge forward or backward
                     if remaining_movement > remaining_forward_length
-                        traversed_node = params.edge_rows(current_edge);
+                        traversed_node = params.edge_rows(traj(i_train, timestep, 1));
                         remaining_movement = remaining_movement - remaining_forward_length;
                     else
-                        traversed_node = params.edge_cols(current_edge);
+                        traversed_node = params.edge_cols(traj(i_train, timestep, 1));
                         remaining_movement = remaining_movement + remaining_backward_length;
                     end
 
                     viable_next_edges = find((params.edge_rows == traversed_node) | (params.edge_cols == traversed_node));
-                    viable_next_edges = viable_next_edges(viable_next_edges!=current_edge);
+                    viable_next_edges = viable_next_edges(viable_next_edges!=traj(i_train, timestep, 1));
                     if length(viable_next_edges) == 0
-                        current_edge_progress = (sign(remaining_movement) + 1) / 2;
+                        traj(i_train, timestep, 2) = (sign(remaining_movement) + 1) / 2;
                         remaining_movement = 0;
                         speeds(i_train, timestep) = 0;
                         continue;
@@ -81,25 +79,23 @@ function traj = constructTrajectory(params, solution)
 
                     % Move to new edge
                     traj(i_train, timestep, 1) = next_edge;
-                    current_edge_length = params.edge_values(next_edge);
 
-                    % Enter the edge from one side
+                    % Set new edge position and movement direction 
                     if params.edge_rows(next_edge) == traversed_node
-                        current_edge_progress = 0;
-                        remaining_movement = -abs(remaining_movement);
-                        speeds(i_train, timestep) = -abs(speeds(i_train, timestep));
-                    else
-                        current_edge_progress = 1;
+                        traj(i_train, timestep, 2) = 0;
                         remaining_movement = abs(remaining_movement);
                         speeds(i_train, timestep) = abs(speeds(i_train, timestep));
+                    else
+                        traj(i_train, timestep, 2) = 1;
+                        remaining_movement = -abs(remaining_movement);
+                        speeds(i_train, timestep) = -abs(speeds(i_train, timestep));
                     end
 
                     abort--;
                 else
                     % Adjust position on current edge
-                    traj(i_train,timestep, 2) = current_edge_progress + (remaining_movement / current_edge_length);
+                    traj(i_train,timestep, 2) = traj(i_train, timestep, 2) + (remaining_movement / current_edge_length);
                     break;
-
                 end
             end
             assert(abort!=0);
