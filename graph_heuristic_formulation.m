@@ -4,9 +4,9 @@ params.infra = [ 0 50 10 0;
                  0 0 0 0];
 [params.edge_rows, params.edge_cols, params.edge_values] = find(params.infra);
 params.n_trains = 3;
-params.initial_pos = [2, 0.5, 1; 3, 0.5, 1; 1, 0.1, -1;];
+params.initial_pos = [2, 0.8, 1; 3, 0.7, 1; 4, 0.01, -1;];
 params.initial_speed = [0.2, 0.3, 0.4];
-params.n_timesteps = 200;
+params.n_timesteps = 1000;
 params.min_separation = 5;
 params.max_speed = 1;
 params.accel = 0.1;
@@ -42,34 +42,19 @@ function traj = constructTrajectory(params, solution)
             traj(i_train, timestep, :) = traj(i_train, timestep-1, :);
             remaining_movement = traj(i_train, timestep, 3) * speeds(i_train, timestep);
 
-            abort = 10000;
+            abort = 1000;
             while abort > 0
-                if abort < 10
-                   disp("oh oh");
-                end
-                % DEBUG
-                current_edge = traj(i_train, timestep, 1);
-                current_progress = traj(i_train, timestep, 2);
-                current_direction = traj(i_train, timestep, 3);
-                current_speed = speeds(i_train, timestep);
-                %
-
                 current_edge_length = params.edge_values(traj(i_train, timestep, 1));
-                remaining_forward_length = (1 - traj(i_train, timestep, 2)) * current_edge_length;
                 remaining_backward_length = traj(i_train, timestep, 2) * current_edge_length;
-
-                remaining_movement = traj(i_train, timestep, 3) * abs(remaining_movement);
-                if abs(remaining_movement) < 1e-10
-                    remaining_movement = 0;
-                end
+                remaining_forward_length = current_edge_length - remaining_backward_length;
 
                 if (remaining_movement > remaining_forward_length) || (remaining_movement < -remaining_backward_length)
                     % Leave edge forward or backward
                     if remaining_movement > remaining_forward_length
-                        traversed_node = params.edge_rows(traj(i_train, timestep, 1));
+                        traversed_node = params.edge_cols(traj(i_train, timestep, 1));
                         remaining_movement = remaining_movement - remaining_forward_length;
                     else
-                        traversed_node = params.edge_cols(traj(i_train, timestep, 1));
+                        traversed_node = params.edge_rows(traj(i_train, timestep, 1));
                         remaining_movement = remaining_movement + remaining_backward_length;
                     end
 
@@ -77,10 +62,10 @@ function traj = constructTrajectory(params, solution)
                     viable_next_edges = find((params.edge_rows == traversed_node) | (params.edge_cols == traversed_node));
                     viable_next_edges = viable_next_edges(viable_next_edges!=traj(i_train, timestep, 1));
                     if length(viable_next_edges) == 0
-                        traj(i_train, timestep, 2) = (sign(remaining_movement) + 1) / 2;
                         remaining_movement = 0;
                         continue;
                     end
+
                     % Direction parameter decides next edge
                     next_edge = viable_next_edges(int32(floor(solution(i_train, timestep, 2) * length(viable_next_edges)) + 1));
 
@@ -95,6 +80,8 @@ function traj = constructTrajectory(params, solution)
                         traj(i_train, timestep, 2) = 1;
                         traj(i_train, timestep, 3) = -1;
                     end
+
+                    remaining_movement = traj(i_train, timestep, 3) * abs(remaining_movement);
 
                     abort--;
                 else
