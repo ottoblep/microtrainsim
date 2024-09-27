@@ -6,7 +6,7 @@ params.infra = [ 0 50 10 0;
 params.n_trains = 3;
 params.initial_pos = [2, 0.5, 1; 3, 0.5, 1; 1, 0.1, -1;];
 params.initial_speed = [0.2, 0.3, 0.4];
-params.n_timesteps = 100;
+params.n_timesteps = 200;
 params.min_separation = 5;
 params.max_speed = 1;
 params.accel = 0.1;
@@ -23,7 +23,6 @@ function traj = constructTrajectory(params, solution)
     % initial_pos dimensions (n_trains, 2) values (edge 0-n, position on edge 0-1
     % initial_speed dimensions (n_trains, 1) values (velocity 0-1)
     % trajectory dimensions (train, timestep) values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
-    traj(:, 1, :) = params.initial_pos;
 
     %% Calculate speed curves
     % Speed is relative to train orientation
@@ -34,11 +33,13 @@ function traj = constructTrajectory(params, solution)
         speeds(i_train,speeds(i_train,:)<-params.max_speed) = -params.max_speed;
     end
 
+    traj(:, 1, :) = params.initial_pos;
+
     for timestep = 2:params.n_timesteps-1
         for i_train = 1:params.n_trains
             %% Move trains
             % Start movement at previous edge
-            traj(i_train, timestep, 1) = traj(i_train, timestep-1, 1);
+            traj(i_train, timestep, :) = traj(i_train, timestep-1, :);
             remaining_movement = traj(i_train, timestep, 3) * speeds(i_train, timestep);
 
             abort = 10000;
@@ -50,6 +51,7 @@ function traj = constructTrajectory(params, solution)
                 current_edge = traj(i_train, timestep, 1);
                 current_progress = traj(i_train, timestep, 2);
                 current_direction = traj(i_train, timestep, 3);
+                current_speed = speeds(i_train, timestep);
                 %
 
                 current_edge_length = params.edge_values(traj(i_train, timestep, 1));
