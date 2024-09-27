@@ -35,11 +35,11 @@ function traj = constructTrajectory(params, solution)
 
     traj(:, 1, :) = params.initial_pos;
 
-    for timestep = 2:params.n_timesteps-1
-        for i_train = 1:params.n_trains
-            %% Move trains
-            % Start movement at previous edge
+    for i_train = 1:params.n_trains
+        for timestep = 2:params.n_timesteps-1
+            % Start movement in previous state
             traj(i_train, timestep, :) = traj(i_train, timestep-1, :);
+            % Add distance to cover this turn
             % Remaining movement is relative to the current edge direction
             remaining_movement = traj(i_train, timestep, 3) * speeds(i_train, timestep);
 
@@ -54,10 +54,11 @@ function traj = constructTrajectory(params, solution)
                     if remaining_movement > remaining_forward_length
                         traversed_node = params.edge_cols(traj(i_train, timestep, 1));
                         remaining_movement = remaining_movement - remaining_forward_length;
+                        node_entrance_direction = traj(i_train, timestep, 3);
                     else
-                        assert(remaining_movement < -remaining_backward_length);
                         traversed_node = params.edge_rows(traj(i_train, timestep, 1));
                         remaining_movement = remaining_movement + remaining_backward_length;
+                        node_entrance_direction = -traj(i_train, timestep, 3);
                     end
 
                     % Find next edge to enter
@@ -77,14 +78,14 @@ function traj = constructTrajectory(params, solution)
                     % Set new edge position and train direction
                     if params.edge_rows(next_edge) == traversed_node
                         traj(i_train, timestep, 2) = 0;
-                        traj(i_train, timestep, 3) = 1;
+                        traj(i_train, timestep, 3) = node_entrance_direction;
+                        remaining_movement = abs(remaining_movement);
                     else
                         assert(params.edge_cols(next_edge) == traversed_node)
                         traj(i_train, timestep, 2) = 1;
-                        traj(i_train, timestep, 3) = -1;
+                        traj(i_train, timestep, 3) = -node_entrance_direction;
+                        remaining_movement = -abs(remaining_movement);
                     end
-
-                    remaining_movement = traj(i_train, timestep, 3) * abs(remaining_movement);
 
                     abort--;
                 else
