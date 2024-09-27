@@ -40,6 +40,7 @@ function traj = constructTrajectory(params, solution)
             %% Move trains
             % Start movement at previous edge
             traj(i_train, timestep, :) = traj(i_train, timestep-1, :);
+            % Remaining movement is relative to the current edge direction
             remaining_movement = traj(i_train, timestep, 3) * speeds(i_train, timestep);
 
             abort = 1000;
@@ -54,6 +55,7 @@ function traj = constructTrajectory(params, solution)
                         traversed_node = params.edge_cols(traj(i_train, timestep, 1));
                         remaining_movement = remaining_movement - remaining_forward_length;
                     else
+                        assert(remaining_movement < -remaining_backward_length);
                         traversed_node = params.edge_rows(traj(i_train, timestep, 1));
                         remaining_movement = remaining_movement + remaining_backward_length;
                     end
@@ -77,6 +79,7 @@ function traj = constructTrajectory(params, solution)
                         traj(i_train, timestep, 2) = 0;
                         traj(i_train, timestep, 3) = 1;
                     else
+                        assert(params.edge_cols(next_edge) == traversed_node)
                         traj(i_train, timestep, 2) = 1;
                         traj(i_train, timestep, 3) = -1;
                     end
