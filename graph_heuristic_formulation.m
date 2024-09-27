@@ -80,7 +80,7 @@ function traj = constructTrajectory(params, solution)
                     % Move to new edge
                     traj(i_train, timestep, 1) = next_edge;
 
-                    % Set new edge position and movement direction 
+                    % Set new edge position and movement direction
                     if params.edge_rows(next_edge) == traversed_node
                         traj(i_train, timestep, 2) = 0;
                         remaining_movement = abs(remaining_movement);
@@ -107,33 +107,9 @@ function score = objectiveFunction(solution, params)
     penalty = 0;
 
     %% Separation Penalties
-    for timestep = 1:params.n_timesteps
-        for i_train = 1:params.n_trains
-            distance = boundedDistance(params, i_train, solution, timestep);
-
-            % Penalize smaller than safe distances
-            if distance >= params.min_separation
-                continue;
-            else
-                penalty = penalty + params.min_separation - distance;
-            end
-        end
-    end
 
     %% Objective evaluation
     score = -penalty;
-end
-
-function dist = boundedDistance(params, edge1, position1, edge2, position2)
-    hgraph = params.infra;
-    old_size = size(params.infra)(1);
-
-    if edge1 == edge2
-        dist = abs((position2-position1) * params.infra(params.edge_rows(edge1),params.edge_cols(edge1)));
-    % else
-        % TODO: Insert helper nodes
-        % TODO: Bounded BFS
-    end
 end
 
 tic
