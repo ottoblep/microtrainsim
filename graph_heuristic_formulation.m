@@ -75,17 +75,12 @@ function traj = constructTrajectory(params, solution)
                     % Move to new edge
                     traj(i_train, timestep, 1) = next_edge;
 
+                    edge_entrance_direction = (params.edge_rows(next_edge) == traversed_node);
+
                     % Set new edge position and train direction
-                    if params.edge_rows(next_edge) == traversed_node
-                        traj(i_train, timestep, 2) = 0;
-                        traj(i_train, timestep, 3) = node_entrance_direction;
-                        remaining_movement = abs(remaining_movement);
-                    else
-                        assert(params.edge_cols(next_edge) == traversed_node)
-                        traj(i_train, timestep, 2) = 1;
-                        traj(i_train, timestep, 3) = -node_entrance_direction;
-                        remaining_movement = -abs(remaining_movement);
-                    end
+                    traj(i_train, timestep, 2) = not(edge_entrance_direction);
+                    traj(i_train, timestep, 3) = (edge_entrance_direction*2 - 1) * node_entrance_direction;
+                    remaining_movement = (edge_entrance_direction*2 - 1) * abs(remaining_movement);
 
                     abort--;
                 else
