@@ -14,7 +14,7 @@ params.distances(params.adjacency_matrix==0) = Inf;
 params.all_shortest_paths = FastFloyd(params.distances);
 
 params.n_timesteps = 7640; % 10s timesteps for one whole day
-params.n_trains = 100;
+params.n_trains = 1;
 params.min_separation = 100; % m
 params.max_speed = 1.11; % m/10s 200km/h
 params.accel = 46.27; % m/(10s)² 0-100kmh in 1m
@@ -22,10 +22,7 @@ params.accel = 46.27; % m/(10s)² 0-100kmh in 1m
 params.initial_pos = randi([1,length(params.adjacency_matrix)(1)], params.n_trains, 3);
 params.initial_pos(:,2) = rand(params.n_trains,1);
 params.initial_pos(:,3) = randi([0,1],params.n_trains,1) * 2 - 1;
-%params.n_trains = 3;
-%params.initial_pos = [2, 0.8, 1; 3, 0.7, 1; 4, 0.01, -1;];
 params.initial_speed = (rand(params.n_trains,1) * 2 - 1) * params.max_speed;
-%params.initial_speed = [0.2, 0.5, -1]; % m/10s
 
 function sol = randomSolution(params)
     % Solution Array dimensions (train, timestep)
@@ -42,7 +39,7 @@ function traj = constructTrajectory(params, solution)
 
     %% Calculate speed curves
     % Speed is relative to train orientation
-    for i_train = 1:params.n_trains
+    parfor i_train = 1:params.n_trains
         speeds(i_train, :) = params.initial_speed(i_train) + cumtrapz(solution(i_train, :, 1)) * params.accel;
         # Do not accelerate over maximum
         speeds(i_train, speeds(i_train,:)>params.max_speed) = params.max_speed;
@@ -51,7 +48,7 @@ function traj = constructTrajectory(params, solution)
 
     traj(:, 1, :) = params.initial_pos;
 
-    for i_train = 1:params.n_trains
+    parfor i_train = 1:params.n_trains
         for timestep = 2:params.n_timesteps-1
             % Start movement in previous state
             traj(i_train, timestep, :) = traj(i_train, timestep-1, :);
@@ -117,7 +114,7 @@ function score = objectiveFunction(params, traj)
 
     %% Separation Penalties
     % For each train pair update the minimum time to collision then skip that time and check again
-    for i_train = 1:params.n_trains
+    parfor i_train = 1:params.n_trains
         timestep = 1;
         for j_train = i_train+1:params.n_trains
             while timestep < params.n_timesteps
