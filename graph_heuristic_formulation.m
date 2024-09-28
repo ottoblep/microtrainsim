@@ -3,9 +3,9 @@ params.adjacency_matrix = [ 0 5000 1000 0;
                  0 0 0 4000;
                  0 0 0 0];
 [params.edge_rows, params.edge_cols, params.edge_values] = find(params.adjacency_matrix);
-params.adjacency_list = {};
+params.adjacent_edge_list = {};
 for node = 1:length(params.adjacency_matrix)(1)
-    params.adjacency_list{node} = find((params.edge_rows == node) | (params.edge_cols == node));
+    params.adjacent_edge_list{node} = find((params.edge_rows == node) | (params.edge_cols == node));
 end
 params.distances = params.adjacency_matrix;
 params.distances(params.adjacency_matrix==0) = Inf;
@@ -72,7 +72,7 @@ function traj = constructTrajectory(params, solution)
                     end
 
                     % Find next edge to enter
-                    viable_next_edges = params.adjacency_list{traversed_node};
+                    viable_next_edges = params.adjacent_edge_list{traversed_node};
                     viable_next_edges = viable_next_edges(viable_next_edges!=traj(i_train, timestep, 1));
                     if length(viable_next_edges) == 0
                         remaining_movement = 0;
