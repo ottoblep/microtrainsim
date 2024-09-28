@@ -53,9 +53,11 @@ function traj = constructTrajectory(params, solution)
                 remaining_backward_length = traj(i_train, timestep, 2) * current_edge_length;
                 remaining_forward_length = current_edge_length - remaining_backward_length;
 
-                if (remaining_movement > remaining_forward_length) || (remaining_movement < -remaining_backward_length)
+                forward_exit = (remaining_movement > remaining_forward_length);
+
+                if forward_exit || (remaining_movement < -remaining_backward_length)
                     % Leave edge forward or backward
-                    if remaining_movement > remaining_forward_length
+                    if forward_exit 
                         traversed_node = params.edge_cols(traj(i_train, timestep, 1));
                         remaining_movement = remaining_movement - remaining_forward_length;
                         node_entrance_direction = traj(i_train, timestep, 3);
