@@ -1,7 +1,9 @@
-params.adjacency_matrix = [ 0 5000 1000 0;
-                 0 0 6000 0;
-                 0 0 0 4000;
-                 0 0 0 0];
+params.adjacency_matrix = triu(randi([-200,30],1000,1000),1) * 1000;
+params.adjacency_matrix(params.adjacency_matrix < 0) = 0; 
+%params.adjacency_matrix = [ 0 5000 1000 0;
+%                 0 0 6000 0;
+%                 0 0 0 4000;
+%                 0 0 0 0];
 [params.edge_rows, params.edge_cols, params.edge_values] = find(params.adjacency_matrix);
 params.adjacent_edge_list = {};
 for node = 1:length(params.adjacency_matrix)(1)
@@ -11,13 +13,19 @@ params.distances = params.adjacency_matrix;
 params.distances(params.adjacency_matrix==0) = Inf;
 params.all_shortest_paths = FastFloyd(params.distances);
 
-params.n_trains = 3;
-params.initial_pos = [2, 0.8, 1; 3, 0.7, 1; 4, 0.01, -1;];
-params.initial_speed = [0.2, 0.5, -1]; % m/10s
 params.n_timesteps = 7640; % 10s timesteps for one whole day
+params.n_trains = 100;
 params.min_separation = 100; % m
 params.max_speed = 1.11; % m/10s 200km/h
 params.accel = 46.27; % m/(10s)² 0-100kmh in 1m
+
+params.initial_pos = randi([1,length(params.adjacency_matrix)(1)], params.n_trains, 3);
+params.initial_pos(:,2) = rand(params.n_trains,1);
+params.initial_pos(:,3) = randi([0,1],params.n_trains,1) * 2 - 1;
+%params.n_trains = 3;
+%params.initial_pos = [2, 0.8, 1; 3, 0.7, 1; 4, 0.01, -1;];
+params.initial_speed = (rand(params.n_trains,1) * 2 - 1) * params.max_speed;
+%params.initial_speed = [0.2, 0.5, -1]; % m/10s
 
 function sol = randomSolution(params)
     % Solution Array dimensions (train, timestep)
