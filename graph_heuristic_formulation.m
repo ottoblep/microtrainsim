@@ -98,13 +98,51 @@ function traj = constructTrajectory(params, solution)
     end
 end
 
-function score = objectiveFunction(solution, params)
+function score = objectiveFunction(params, traj)
     penalty = 0;
 
     %% Separation Penalties
     % For each train pair update the minimum time to collision then skip that time and check again
     for i_train = 1:params.n_trains
-        for j_train = 1:params.n_trains
+        timestep = 1;
+        for j_train = i_train+1:params.n_trains
+            while timestep < params.n_timesteps
+                edge_i = traj(i_train, timestep, 1);
+                edge_j = traj(j_train, timestep, 1);
+                i_edge_length = params.edge_values(edge_i);
+                j_edge_length = params.edge_values(edge_j);
+
+                if edge_i == edge_j
+                    distance = abs(traj(i_train, timestep, 2) - traj(j_train, timestep, 2)) * i_edge_length;
+                else
+                    %% Find shortest path with precomputed distance matrix
+                    i_node_backward = params.edge_rows(edge_i);
+                    i_node_forward = params.edge_cols(edge_i);
+                    j_node_backward = params.edge_rows(edge_j);
+                    j_node_forward = params.edge_cols(edge_j);
+
+                    i_remaining_backward_length = traj(i_train, timestep, 2) * i_edge_length;
+                    i_remaining_forward_length = i_edge_length - i_remaining_backward_length;
+                    j_remaining_backward_length = traj(j_train, timestep, 2) * j_edge_length;
+                    j_remaining_forward_length = j_edge_length - j_remaining_backward_length;
+
+                    dist1 = i_remaining_backward_length + params.all_shortest_paths(i_node_backward,j_node_backward) + j_remaining_backward_length;
+                    dist2 = i_remaining_forward_length + params.all_shortest_paths(i_node_forward,j_node_backward) + j_remaining_backward_length;
+                    dist3 = i_remaining_backward_length + params.all_shortest_paths(i_node_backward,j_node_forward) + j_remaining_forward_length;
+                    dist4 = i_remaining_forward_length + params.all_shortest_paths(i_node_forward,j_node_forward) + j_remaining_forward_length;
+
+                    distance = min([dist1, dist2, dist3, dist4]);
+                end
+
+                if distance > params.min_separation
+                    guaranteed_safe_time = int32(floor((distance - params.min_separation) / (2 * params.max_speed))) + 1;
+                else
+                    % Exponential penalty for closeness beyond the minimum separation
+                    penalty = penalty + (params.min_separation/distance - 1);
+                    guaranteed_safe_time = 1;
+                end
+                timestep = timestep + guaranteed_safe_time;
+            end
         end
     end
 
@@ -115,4 +153,7 @@ end
 tic
 sol = randomSolution(params);
 traj = constructTrajectory(params, sol);
+toc
+tic
+score = objectiveFunction(params, traj)
 toc
