@@ -1,6 +1,6 @@
-params.network = [ 0 50 10 0;
-                 0 0 60 0;
-                 0 0 0 40;
+params.network = [ 0 5000 1000 0;
+                 0 0 6000 0;
+                 0 0 0 4000;
                  0 0 0 0];
 [params.edge_rows, params.edge_cols, params.edge_values] = find(params.network);
 params.distances = params.network;
@@ -9,11 +9,11 @@ params.all_shortest_paths = FastFloyd(params.distances);
 
 params.n_trains = 3;
 params.initial_pos = [2, 0.8, 1; 3, 0.7, 1; 4, 0.01, -1;];
-params.initial_speed = [0.2, 0.3, 0.4];
-params.n_timesteps = 1000;
-params.min_separation = 5;
-params.max_speed = 1;
-params.accel = 0.1;
+params.initial_speed = [2, 3, -1.5]; % m/min
+params.n_timesteps = 1440; % 1min timesteps for one whole day
+params.min_separation = 100; % m
+params.max_speed = 6.66; % m/min 200km/h
+params.accel = 1666; % m/min² 0-100kmh in 1m 
 
 function sol = randomSolution(params)
     % Solution Array dimensions (train, timestep)
@@ -93,7 +93,7 @@ function traj = constructTrajectory(params, solution)
                     break;
                 end
             end
-            assert(abort!=0);
+            assert(abort>0);
         end
     end
 end
