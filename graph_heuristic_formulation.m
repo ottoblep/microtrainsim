@@ -1,8 +1,12 @@
-params.infra = [ 0 50 10 0;
+params.network = [ 0 50 10 0;
                  0 0 60 0;
                  0 0 0 40;
                  0 0 0 0];
-[params.edge_rows, params.edge_cols, params.edge_values] = find(params.infra);
+[params.edge_rows, params.edge_cols, params.edge_values] = find(params.network);
+params.distances = params.network;
+params.distances(params.network==0) = Inf;
+params.all_shortest_paths = FastFloyd(params.distances);
+
 params.n_trains = 3;
 params.initial_pos = [2, 0.8, 1; 3, 0.7, 1; 4, 0.01, -1;];
 params.initial_speed = [0.2, 0.3, 0.4];
@@ -98,6 +102,11 @@ function score = objectiveFunction(solution, params)
     penalty = 0;
 
     %% Separation Penalties
+    % For each train pair update the minimum time to collision then skip that time and check again
+    for i_train = 1:params.n_trains
+        for j_train = 1:params.n_trains
+        end
+    end
 
     %% Objective evaluation
     score = -penalty;
