@@ -55,51 +55,69 @@ function traj = constructTrajectory(params, solution)
 
     parfor i_train = 1:params.n_trains
         pivot_timestep = 1;
-        while true 
+        while pivot_timestep <= params.n_timesteps
             current_edge_length = params.edge_values(traj(i_train, pivot_timestep, 1));
             remaining_backward_length = traj(i_train, pivot_timestep, 2) * current_edge_length;
             remaining_forward_length = current_edge_length - remaining_backward_length;
             base_position = position(i_train, pivot_timestep);
 
             next_pivot_timestep = find(((position(i_train,:)-base_position) > remaining_forward_length | (position(i_train,:)-base_position) < -remaining_backward_length), 1);
-            if isempty(next_pivot_timestep) 
-                next_pivot_timestep = params.n_timesteps-1; 
+            assert(next_pivot_timestep <= params.n_timesteps);
+            if isempty(next_pivot_timestep)
+                next_pivot_timestep = params.n_timesteps;
             end
 
             % Set trajectory on the current edge
-            traj(i_train, pivot_timestep:next_pivot_timestep-1, 2) = (position(i_train, pivot_timestep:next_pivot_timestep-1) - base_position) / current_edge_length;
             traj(i_train, pivot_timestep:next_pivot_timestep-1, 1) = traj(i_train, pivot_timestep, 1);
+            traj(i_train, pivot_timestep:next_pivot_timestep-1, 2) = (position(i_train, pivot_timestep:next_pivot_timestep-1) - base_position) / current_edge_length;
             traj(i_train, pivot_timestep:next_pivot_timestep-1, 3) = traj(i_train, pivot_timestep, 3);
-                
+
             %% Leave current edge
             forward_exit = (position(i_train,next_pivot_timestep) - base_position > remaining_forward_length);
 
             if forward_exit
                 traversed_node = params.edge_cols(traj(i_train, pivot_timestep, 1));
                 node_entrance_direction = traj(i_train, pivot_timestep, 3);
-                extra_movement = (position(i_train, 1:next_pivot_timestep) - base_position - remaining_forward_length);
+                extra_movement = (position(i_train, next_pivot_timestep) - base_position - remaining_forward_length);
             else
                 traversed_node = params.edge_rows(traj(i_train, pivot_timestep, 1));
                 node_entrance_direction = -traj(i_train, pivot_timestep, 3);
-                extra_movement = (position(i_train, 1:next_pivot_timestep) - base_position + remaining_backward_length);
+                extra_movement = (position(i_train, next_pivot_timestep) - base_position + remaining_backward_length);
             end
 
             % Decide on next edge
             viable_next_edges = params.adjacent_edge_list{traversed_node};
             viable_next_edges = viable_next_edges(viable_next_edges!=traj(i_train, pivot_timestep, 1));
-            % if isempty(viable_next_edges)
-                % TODO
-            % end
+
+            if isempty(viable_next_edges)
+                % Stay on the edge until trajectory comes back
+                if forward_exit
+                    next_next_pivot_timestep = next_pivot_timestep - 1 + find((position(i_train,next_pivot_timestep:end)-base_position) < remaining_forward_length, 1);
+                else
+                    next_next_pivot_timestep = next_pivot_timestep - 1 + find((position(i_train,next_pivot_timestep:end)-base_position) > -remaining_backward_length, 1);
+                end
+                assert(next_next_pivot_timestep <= params.n_timesteps);
+                if isempty(next_next_pivot_timestep)
+                    next_next_pivot_timestep = params.n_timesteps;
+                end
+                traj(i_train, next_pivot_timestep:next_next_pivot_timestep-1, 1) = traj(i_train, next_pivot_timestep-1, 1);
+                traj(i_train, next_pivot_timestep:next_next_pivot_timestep-1, 2) = forward_exit;
+                traj(i_train, next_pivot_timestep:next_next_pivot_timestep-1, 3) = traj(i_train, next_pivot_timestep-1, 3);
+                next_pivot_timestep = next_next_pivot_timestep;
+                continue
+            end
             next_edge = viable_next_edges(int32(floor(solution(i_train, pivot_timestep, 2) * length(viable_next_edges)) + 1));
 
             % Set position and train direction on new edge
             edge_entrance_direction = (params.edge_rows(next_edge) == traversed_node);
             traj(i_train, next_pivot_timestep, 1) = next_edge; # edge number
-            traj(i_train,next_pivot_timestep, 2) = not(edge_entrance_direction) + extra_movement / params.edge_values(next_edge); # position on edge
+            traj(i_train,next_pivot_timestep, 2) = not(edge_entrance_direction) + (edge_entrance_direction*2 - 1) * abs(extra_movement / params.edge_values(next_edge)); # position on edge
             traj(i_train, next_pivot_timestep, 3) = (edge_entrance_direction*2 - 1) * node_entrance_direction; # orientation on edge
 
             pivot_timestep = next_pivot_timestep;
         end
+
+        traj(i_train, params.n_timesteps, :) = traj(i_train, params.n_timesteps-1, :);
     end
 end
 
@@ -112,8 +130,8 @@ function score = objectiveFunction(params, traj)
         timestep = 1;
         for j_train = i_train+1:params.n_trains
             while timestep < params.n_timesteps
-                edge_i = traj(i_train, timestep, 1);
-                edge_j = traj(j_train, timestep, 1);
+                edge_i = int32(traj(i_train, timestep, 1));
+                edge_j = int32(traj(j_train, timestep, 1));
                 i_edge_length = params.edge_values(edge_i);
                 j_edge_length = params.edge_values(edge_j);
 
