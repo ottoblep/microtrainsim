@@ -61,7 +61,7 @@ function traj = constructTrajectory(params, solution)
             remaining_forward_length = current_edge_length - remaining_backward_length;
             base_position = position(i_train, pivot_timestep);
 
-            next_pivot_timestep = find(((position(i_train,:)-base_position) > remaining_forward_length | (position(i_train,:)-base_position) < -remaining_backward_length), 1);
+            next_pivot_timestep = pivot_timestep - 1 + find(((position(i_train,pivot_timestep:end)-base_position) > remaining_forward_length | (position(i_train,pivot_timestep:end)-base_position) < -remaining_backward_length), 1);
             assert(next_pivot_timestep <= params.n_timesteps);
             if isempty(next_pivot_timestep)
                 next_pivot_timestep = params.n_timesteps;
