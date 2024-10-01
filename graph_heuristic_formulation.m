@@ -1,4 +1,4 @@
-params.adjacency_matrix = triu(randi([-200,30],1000,1000),1) * 1000;
+params.adjacency_matrix = sparse(triu(randi([-200,30],1000,1000),1) * 1000);
 params.adjacency_matrix(params.adjacency_matrix < 0) = 0;
 %params.adjacency_matrix = [ 0 500 200 0;
 %                 0 0 600 0;
