@@ -24,7 +24,7 @@ for count, edge in enumerate(G.edges()):
 
 edge_trace = go.Scatter(
     x=edge_x, y=edge_y,
-    line=dict(width=0.5, color='#888'),
+    line=dict(width=1, color='black'),
     hoverinfo='none',
     mode='lines')
 
@@ -40,7 +40,8 @@ node_trace = go.Scatter(
     mode='markers',
     hoverinfo='text',
     marker=dict(
-        size=10,
+        size=3,
+        color='black',
         line_width=2)
 )
 
@@ -68,7 +69,8 @@ for timestep in range(0, max_timestep, int(np.floor(max_timestep/n_slider_steps)
         mode='markers',
         hoverinfo='text',
         marker=dict(
-            color='#333',
+            color=list(range(np.shape(traj_edges)[0])),
+            colorscale="rainbow",
             size=10,
             line_width=2)
     ))
