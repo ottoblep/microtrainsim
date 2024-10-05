@@ -119,7 +119,8 @@ function traj = constructTrajectory(params, solution)
 
                 pivot_timestep = deadend_next_pivot_timestep;
             else
-                next_edge = viable_next_edges(int32(floor(solution(i_train, pivot_timestep, 2) * length(viable_next_edges)) + 1));
+                index = 1 + round(solution(i_train, pivot_timestep, 2) * (length(viable_next_edges) - 1));
+                next_edge = viable_next_edges(index);
 
                 % Set position and train direction on new edge
                 edge_entrance_direction = (params.edge_rows(next_edge) == traversed_node);
