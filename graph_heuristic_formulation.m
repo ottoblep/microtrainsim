@@ -40,7 +40,7 @@ function sol = randomSolution(params)
 end
 
 function traj = constructTrajectory(params, solution)
-    % solution dimensions (train, timestep) values (acceleration -1,0,+1, direction 0-1)
+    % solution dimensions (train, timestep) values (acceleration -1-+1, direction 0-1)
     % initial_pos dimensions (n_trains, 2) values (edge 1-n, position on edge 0-1
     % initial_speed dimensions (n_trains, 1) values (velocity 0-1)
     % trajectory dimensions (train, timestep) values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
@@ -190,21 +190,52 @@ end
 
 function randomSearch(params)
     csvwrite("network.csv", params.adjacency_matrix);
-score = -Inf;
+    score = -Inf;
     best_traj = [];
-while score < 0
+    while score < 0
         tic
-    sol = randomSolution(params);
-    traj = constructTrajectory(params, sol);
+        sol = randomSolution(params);
+        traj = constructTrajectory(params, sol);
         new_score = objectiveFunction(params, traj);
         if score < new_score
             best_traj = traj;
             score = new_score
             csvwrite("trajectories_edges.csv", traj(:,:,1));
             csvwrite("trajectories_positions.csv", traj(:,:,2));
-
         end
     end
+end
+
+function solution = deserializeSolution(params, serialized_solution)
+    for i_train = 1:params.n_trains
+      solution(i_train, :, 1) =  serialized_solution((i_train-1)*params.n_timesteps+1:(i_train)*params.n_timesteps);
+      solution(i_train, :, 2) =  serialized_solution((params.n_trains + i_train - 1)*params.n_timesteps+1:(params.n_trains + i_train)*params.n_timesteps);
+    end
+    % Enforce limits manually due to below issue with bounds
+    solution = min(solution,1);
+    solution(:,:,1) = max(solution(:,:,1) , -1);
+    solution(:,:,2) = max(solution(:,:,2), 0);
+
+    assert(~any(solution>1));
+    assert(isempty(find(solution(:,:,2)<0)));
+end
+
+function geneticSearch(params)
+  % Define serialized decision variables formally
+  % Structure (train1_accel train2_accel train1_direction train2_direction)
+  n_steps = params.n_trains * params.n_timesteps;
+  n_vars = n_steps * 2;
+  % Octave ignores the lower and upper bounds so we also set the limits with PopInitRange for the initial population
+  lb = cat(1, -1 * ones(n_steps,1), zeros(n_steps,1));
+  ub = ones(2*n_steps,1);
+  init_range = transpose(cat(2,lb,ub));
+  options = gaoptimset('PopInitRange', init_range);
+  fun = @(serialized_solution) (objectiveFunction(params,constructTrajectory(params, deserializeSolution(params, serialized_solution))));
+  [x,fval,exitflag,output] = ga(fun,n_vars,[],[],[],[],lb,ub, [] , options)
+  traj = constructTrajectory(params, deserializeSolution(params, x));
+  csvwrite("network.csv", params.adjacency_matrix);
+  csvwrite("trajectories_edges.csv", traj(:,:,1));
+  csvwrite("trajectories_positions.csv", traj(:,:,2));
 end
 
 randomSearch(params);
