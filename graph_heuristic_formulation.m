@@ -20,7 +20,7 @@ params.min_separation = 100; % m
 params.max_speed = 1.11; % m/10s 200km/h
 params.accel = 46.27; % m/(10s)² 0-100kmh in 1m
 
-params.initial_pos = randi([1,length(params.adjacency_matrix)(1)], params.n_trains, 3);
+params.initial_pos = randi([1,length(params.edge_values)], params.n_trains, 3);
 params.initial_pos(:,2) = rand(params.n_trains,1);
 params.initial_pos(:,3) = randi([0,1],params.n_trains,1) * 2 - 1;
 params.initial_speed = (rand(params.n_trains,1) * 2 - 1) * params.max_speed;
@@ -34,7 +34,7 @@ end
 
 function traj = constructTrajectory(params, solution)
     % solution dimensions (train, timestep) values (acceleration -1,0,+1, direction 0-1)
-    % initial_pos dimensions (n_trains, 2) values (edge 0-n, position on edge 0-1
+    % initial_pos dimensions (n_trains, 2) values (edge 1-n, position on edge 0-1
     % initial_speed dimensions (n_trains, 1) values (velocity 0-1)
     % trajectory dimensions (train, timestep) values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
 
@@ -65,7 +65,7 @@ function traj = constructTrajectory(params, solution)
             % Find next edge change
             edge_trajectory = traj(i_train, pivot_timestep, 3) * (position(i_train,pivot_timestep:end) - base_position);
             next_pivot_timestep = (pivot_timestep - 1) + find((edge_trajectory > remaining_forward_length | edge_trajectory < -remaining_backward_length), 1);
-            forward_exit = (edge_trajectory(next_pivot_timestep - (pivot_timestep - 1)) > remaining_forward_length);
+            forward_exit = any((edge_trajectory(next_pivot_timestep - (pivot_timestep - 1)) > remaining_forward_length));
             if isempty(next_pivot_timestep)
                 next_pivot_timestep = params.n_timesteps;
             end
@@ -107,7 +107,7 @@ function traj = constructTrajectory(params, solution)
 
                 % Set position and train direction as stationary
                 traj(i_train, next_pivot_timestep:deadend_next_pivot_timestep, 1) = traj(i_train, pivot_timestep, 1);
-                traj(i_train, next_pivot_timestep:deadend_next_pivot_timestep, 2) = forward_exit;
+                traj(i_train, next_pivot_timestep:deadend_next_pivot_timestep, 2) = double(forward_exit);
                 traj(i_train, next_pivot_timestep:deadend_next_pivot_timestep, 3) = traj(i_train, pivot_timestep, 3);
 
                 pivot_timestep = deadend_next_pivot_timestep;
