@@ -140,8 +140,8 @@ function score = objectiveFunction(params, traj)
     %% Separation Penalties
     % For each train pair update the minimum time to collision then skip that time and check again
     parfor i_train = 1:params.n_trains
-        timestep = 1;
         for j_train = i_train+1:params.n_trains
+            timestep = 1;
             while timestep < params.n_timesteps
                 edge_i = int32(traj(i_train, timestep, 1));
                 edge_j = int32(traj(j_train, timestep, 1));
