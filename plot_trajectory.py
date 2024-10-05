@@ -30,6 +30,7 @@ edge_trace = go.Scatter(
 
 node_x = []
 node_y = []
+n_nodes = len(G.nodes())
 for node in G.nodes():
     x, y = pos[node]
     node_x.append(x)
@@ -37,8 +38,9 @@ for node in G.nodes():
 
 node_trace = go.Scatter(
     x=node_x, y=node_y,
-    mode='markers',
-    hoverinfo='text',
+    mode='markers+text',
+    textposition="top center",
+    text=[str(x) for x in range(1,n_nodes+1)],
     marker=dict(
         size=3,
         color='black',
