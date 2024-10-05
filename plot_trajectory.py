@@ -51,13 +51,13 @@ train_traces = []
 n_slider_steps = 200
 max_timestep = np.shape(traj_edges)[1]
 # Edges are saved by their nonzero order in the adjacency matrix 
-edge_nodes_1, edge_nodes_2 = np.nonzero(network)
+edge_nodes_1, edge_nodes_2 = np.nonzero(np.transpose(network))
 for timestep in range(0, max_timestep, int(np.floor(max_timestep/n_slider_steps))):
     train_x = []
     train_y = []
     for train in range(np.shape(traj_edges)[0]):
         edge = traj_edges[train, timestep]
-        position = traj_positions[train, timestep]
+        position = 1 - traj_positions[train, timestep]
         pos_node_1 = pos[edge_nodes_1[int(edge-1)]] 
         pos_node_2 = pos[edge_nodes_2[int(edge-1)]]
         x = pos_node_1[0] + position * (pos_node_2[0] - pos_node_1[0])
