@@ -1,3 +1,4 @@
+%% Generate Network
 %params.adjacency_matrix = [ 0 500 200 0;
 %                  0 0 600 0;
 %                  0 0 0 400;
@@ -8,12 +9,16 @@ params.adjacent_edge_list = {};
 for node = 1:length(params.adjacency_matrix)(1)
     params.adjacent_edge_list{node} = find((params.edge_rows == node) | (params.edge_cols == node));
 end
-params.distances = params.adjacency_matrix;
-params.distances(params.adjacency_matrix==0) = Inf;
+
+%% All shortest path pairs
+params.distances = params.adjacency_matrix + params.adjacency_matrix';
+params.distances(params.distances==0) = Inf;
+params.distances(logical(eye(size(params.distances)))) = 0;
 params.all_shortest_paths = FastFloyd(params.distances);
 
+%% Parameters
 params.n_timesteps = 7640; % 10s timesteps for one whole day
-params.n_trains = 7;
+params.n_trains = 10;
 params.min_separation = 100; % m
 params.max_speed = 1.11; % m/10s 200km/h
 params.accel = 46.27; % m/(10s)² 0-100kmh in 1m
