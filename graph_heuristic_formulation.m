@@ -11,10 +11,11 @@ for node = 1:length(params.adjacency_matrix)(1)
 end
 
 %% All shortest path pairs
-params.distances = params.adjacency_matrix + params.adjacency_matrix';
-params.distances(params.distances==0) = Inf;
-params.distances(logical(eye(size(params.distances)))) = 0;
-params.all_shortest_paths = FastFloyd(params.distances);
+distances = params.adjacency_matrix + params.adjacency_matrix';
+distances(distances==0) = Inf;
+distances(logical(eye(size(distances)))) = 0;
+params.all_shortest_paths = FastFloyd(distances);
+clear distances;
 
 %% Parameters
 params.n_timesteps = 7640; % 10s timesteps for one whole day
