@@ -175,7 +175,7 @@ function score = objectiveFunction(params, traj)
                     guaranteed_safe_time = int32(floor((distance - params.min_separation) / (2 * params.max_speed))) + 1;
                 else
                     % Exponential penalty for closeness beyond the minimum separation
-                    penalty = penalty + (params.min_separation/distance - 1);
+                    penalty = penalty + min(10000, (params.min_separation/distance - 1));
                     guaranteed_safe_time = 1;
                 end
 
