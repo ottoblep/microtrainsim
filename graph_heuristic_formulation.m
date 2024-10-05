@@ -188,13 +188,23 @@ function score = objectiveFunction(params, traj)
     score = -penalty;
 end
 
+function randomSearch(params)
+    csvwrite("network.csv", params.adjacency_matrix);
 score = -Inf;
+    best_traj = [];
 while score < 0
+        tic
     sol = randomSolution(params);
     traj = constructTrajectory(params, sol);
-    score = objectiveFunction(params, traj)
+        new_score = objectiveFunction(params, traj);
+        if score < new_score
+            best_traj = traj;
+            score = new_score
+            csvwrite("trajectories_edges.csv", traj(:,:,1));
+            csvwrite("trajectories_positions.csv", traj(:,:,2));
+
+        end
+    end
 end
 
-csvwrite("network.csv", params.adjacency_matrix);
-csvwrite("trajectories_edges.csv", traj(:,:,1));
-csvwrite("trajectories_positions.csv", traj(:,:,2));
+randomSearch(params);
