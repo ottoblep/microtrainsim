@@ -1,11 +1,12 @@
 %% Generate Network
-%params.adjacency_matrix = [ 0 500 200 0;
-%                  0 0 600 0;
-%                  0 0 0 400;
-%                  0 0 0 0];
-graph = randomGraph(10,20);
-params.adjacency_matrix = triu((graph + graph') * 1000, 1);
-clear graph;
+%params.adjacency_matrix = [ 0 500 200 0 500;
+%                            0 0 600 2000 1000;
+%                            0 0 0 400 0;
+%                            0 0 0 0 0;
+%                            0 0 0 0 0];
+adj = randomGraph(10,20);
+params.adjacency_matrix = triu((adj + adj') * 1000, 1);
+clear adj;
 [params.edge_rows, params.edge_cols, params.edge_values] = find(params.adjacency_matrix);
 params.adjacent_edge_list = {};
 for node = 1:length(params.adjacency_matrix)(1)
