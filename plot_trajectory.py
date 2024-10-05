@@ -68,8 +68,9 @@ for timestep in range(0, max_timestep, int(np.floor(max_timestep/n_slider_steps)
     train_traces.append(go.Scatter(
         x=train_x, y=train_y,
         visible=False,
-        mode='markers',
-        hoverinfo='text',
+        mode='markers+text',
+        textposition="top center",
+        text=[str(x) for x in range(1,np.shape(traj_edges)[0]+1)],
         marker=dict(
             color=list(range(np.shape(traj_edges)[0])),
             colorscale="rainbow",
