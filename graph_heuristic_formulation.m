@@ -21,7 +21,7 @@ params.all_shortest_paths = FastFloyd(distances);
 clear distances;
 
 %% Parameters
-params.n_timesteps = 7640; % 10s timesteps for one whole day
+params.n_timesteps = 8640; % 10s timesteps for one whole day
 params.n_trains = 10;
 params.min_separation = 100; % m
 params.max_speed = 1.11; % m/10s 200km/h
