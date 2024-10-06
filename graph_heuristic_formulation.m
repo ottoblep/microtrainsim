@@ -27,38 +27,39 @@ params.min_separation = 100; % m
 params.max_speed = 1.11; % m/10s 200km/h
 params.accel = 46.27; % m/(10s)² 0-100kmh in 1m
 
+% initial_pos dimensions (n_trains, 2) values (edge 1-n, position on edge 0-1
+% initial_speed dimensions (n_trains, 1) values (velocity 0-1)
 params.initial_pos = randi([1,length(params.edge_values)], params.n_trains, 3);
 params.initial_pos(:,2) = rand(params.n_trains,1);
 params.initial_pos(:,3) = randi([0,1],params.n_trains,1) * 2 - 1;
 params.initial_speed = (rand(params.n_trains,1) * 2 - 1) * params.max_speed;
 
 function sol = randomSolution(params)
-    % Solution Array dimensions (train, timestep)
-    % Solution Array values (acceleration -1,0,+1, direction 0-1)
-    sol = rand(params.n_trains, params.n_timesteps, 2);
-    sol(:,:,1) = randi([-1,1], params.n_trains, params.n_timesteps);
+    % Solution Array dimensions (1, train * timestep * 2)
+    % Solution Array values (acceleration 0-1, direction 0-1)
+    sol = rand(1, params.n_trains * params.n_timesteps * 2);
 end
 
 function traj = constructTrajectory(params, solution)
-    % solution dimensions (train, timestep) values (acceleration -1-+1, direction 0-1)
-    % initial_pos dimensions (n_trains, 2) values (edge 1-n, position on edge 0-1
-    % initial_speed dimensions (n_trains, 1) values (velocity 0-1)
-    % trajectory dimensions (train, timestep) values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
+    assert(~any(solution>1));
+    assert(~any(solution<0));
 
     %% Calculate speed curves
     % Speed is relative to train orientation
     parfor i_train = 1:params.n_trains
-        speeds(i_train, :) = params.initial_speed(i_train) + cumtrapz(solution(i_train, :, 1)) * params.accel;
+        acceleration = solution((i_train-1)*params.n_timesteps+1:(i_train)*params.n_timesteps);
+        speeds(i_train, :) = params.initial_speed(i_train) + cumtrapz(((acceleration * 2) - 1) * params.accel);
         # Do not accelerate over maximum
-        speeds(i_train, speeds(i_train,:)>params.max_speed) = params.max_speed;
-        speeds(i_train,speeds(i_train,:)<-params.max_speed) = -params.max_speed;
     end
+    speeds(speeds>params.max_speed) = params.max_speed;
+    speeds(speeds<-params.max_speed) = -params.max_speed;
 
     %% Calculate position curves
     parfor i_train = 1:params.n_trains
         position(i_train, :) = cumtrapz(speeds(i_train, :));
     end
 
+    % trajectory dimensions (train, timestep) values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
     traj(:, 1, :) = params.initial_pos;
 
     parfor i_train = 1:params.n_trains
@@ -119,8 +120,8 @@ function traj = constructTrajectory(params, solution)
 
                 pivot_timestep = deadend_next_pivot_timestep;
             else
-                index = 1 + round(solution(i_train, pivot_timestep, 2) * (length(viable_next_edges) - 1));
-                next_edge = viable_next_edges(index);
+                next_edge_selection = 1 + round(solution((params.n_trains + i_train - 1) * params.n_timesteps+pivot_timestep) * (length(viable_next_edges) - 1));
+                next_edge = viable_next_edges(next_edge_selection);
 
                 % Set position and train direction on new edge
                 edge_entrance_direction = (params.edge_rows(next_edge) == traversed_node);
@@ -207,19 +208,6 @@ function randomSearch(params)
     end
 end
 
-function solution = deserializeSolution(params, serialized_solution)
-    for i_train = 1:params.n_trains
-      solution(i_train, :, 1) =  serialized_solution((i_train-1)*params.n_timesteps+1:(i_train)*params.n_timesteps);
-      solution(i_train, :, 2) =  serialized_solution((params.n_trains + i_train - 1)*params.n_timesteps+1:(params.n_trains + i_train)*params.n_timesteps);
-    end
-    % Enforce limits manually due to below issue with bounds
-    solution = min(solution,1);
-    solution(:,:,1) = max(solution(:,:,1) , -1);
-    solution(:,:,2) = max(solution(:,:,2), 0);
-
-    assert(~any(solution>1));
-    assert(isempty(find(solution(:,:,2)<0)));
-end
 
 function geneticSearch(params)
   % Define serialized decision variables formally
@@ -227,11 +215,11 @@ function geneticSearch(params)
   n_steps = params.n_trains * params.n_timesteps;
   n_vars = n_steps * 2;
   % Octave ignores the lower and upper bounds so we also set the limits with PopInitRange for the initial population
-  lb = cat(1, -1 * ones(n_steps,1), zeros(n_steps,1));
+  lb = zeros(2*n_steps,1);
   ub = ones(2*n_steps,1);
   init_range = transpose(cat(2,lb,ub));
   options = gaoptimset('PopInitRange', init_range);
-  fun = @(serialized_solution) (objectiveFunction(params,constructTrajectory(params, deserializeSolution(params, serialized_solution))));
+  fun = @(solution) (objectiveFunction(params,constructTrajectory(params, solution)));
   [x,fval,exitflag,output] = ga(fun,n_vars,[],[],[],[],lb,ub, [] , options)
   traj = constructTrajectory(params, deserializeSolution(params, x));
   csvwrite("network.csv", params.adjacency_matrix);
