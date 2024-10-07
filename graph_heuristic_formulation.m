@@ -210,6 +210,7 @@ end
 
 
 function geneticSearch(params)
+  csvwrite("network.csv", params.adjacency_matrix);
   % Define serialized decision variables formally
   % Structure (train1_accel train2_accel train1_direction train2_direction)
   n_steps = params.n_trains * params.n_timesteps;
@@ -222,9 +223,40 @@ function geneticSearch(params)
   fun = @(solution) (objectiveFunction(params,constructTrajectory(params, solution)));
   [x,fval,exitflag,output] = ga(fun,n_vars,[],[],[],[],lb,ub, [] , options)
   traj = constructTrajectory(params, deserializeSolution(params, x));
-  csvwrite("network.csv", params.adjacency_matrix);
   csvwrite("trajectories_edges.csv", traj(:,:,1));
   csvwrite("trajectories_positions.csv", traj(:,:,2));
 end
 
-randomSearch(params);
+function localSearch(params)
+    csvwrite("network.csv", params.adjacency_matrix);
+    global_score = -Inf;
+
+    for restart = 1:100
+        improvement = Inf; 
+        abort = 0;
+        solution = randomSolution(params);
+        score = objectiveFunction(params,constructTrajectory(params, solution));
+
+        while improvement > 100 && abort < 100
+            preturbed_solution = solution + (rand(1, params.n_trains * params.n_timesteps * 2) - 0.5);
+            preturbed_solution(preturbed_solution > 1) = 1;
+            preturbed_solution(preturbed_solution < 0) = 0;
+            traj = constructTrajectory(params, preturbed_solution);
+            new_score = objectiveFunction(params, traj);
+
+            if new_score > score
+                if new_score > global_score
+                    csvwrite("trajectories_edges.csv", traj(:,:,1));
+                    csvwrite("trajectories_positions.csv", traj(:,:,2));
+                    global_score = new_score
+                end
+                solution = preturbed_solution;
+                abort = 0;
+                improvement = new_score - score
+            end
+            abort++;
+        end
+    end
+end
+
+localSearch(params);
