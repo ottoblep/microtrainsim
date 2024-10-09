@@ -35,7 +35,7 @@ params.initial_speeds = (rand(params.n_trains,1) * 2 - 1) * params.max_speed;
 
 function traj_set = constructTrajectorySet(params, solution, initial_positions, initial_speeds)
     %% Constructs a set of train trajectories on the graph
-    % solution dimensions (timestep * 2)
+    % solution dimensions (n_trains, timestep * 2)
     % solution values (acceleration 0-1, direction 0-1)
     % initial position dimensions (n_trains, 3)
     % initial position values (edge 0-n, position on edge 0-1)
@@ -44,10 +44,7 @@ function traj_set = constructTrajectorySet(params, solution, initial_positions, 
     % trajectory dimensions (n_trains, 3, timestep)
     % trajectory values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
     for i_train = 1:params.n_trains
-        accelerations = solution((i_train - 1) * params.n_timesteps + 1:(i_train + 1) * params.n_timesteps);
-        directions = solution((params.n_trains + i_train - 1) * params.n_timesteps + 1:(params.n_trains + i_train) * params.n_timesteps);
-        single_solution = cat(2, accelerations, directions);
-        traj_set(i_train, :, :) = constructTrajectory(params, single_solution, initial_positions(i_train, :), initial_speeds(i_train));
+        traj_set(i_train, :, :) = constructTrajectory(params, solution(i_train,:), initial_positions(i_train, :), initial_speeds(i_train));
     end
 end
 
@@ -219,11 +216,9 @@ end
 
 %% Search algorithms
 
-function sol = greedySolution(params)
-end
 
-function sol = randomSolution(params)
-    sol = rand(1, params.n_trains * params.n_timesteps * 2);
+function solution = randomSolution(params)
+    solution = rand(params.n_trains, params.n_timesteps * 2);
 end
 
 function randomSearch(params)
@@ -255,7 +250,7 @@ function localSearch(params)
         score = objectiveFunction(params,constructTrajectorySet(params, solution, params.initial_positions, params.initial_speeds));
 
         while improvement > 100 && abort < 100
-            preturbed_solution = solution + (rand(1, params.n_trains * params.n_timesteps * 2) - 0.5);
+            preturbed_solution = solution + (rand(params.n_trains, params.n_timesteps * 2) - 0.5);
             preturbed_solution(preturbed_solution > 1) = 1;
             preturbed_solution(preturbed_solution < 0) = 0;
             traj_set = constructTrajectorySet(params, preturbed_solution, params.initial_positions, params.initial_speeds);
