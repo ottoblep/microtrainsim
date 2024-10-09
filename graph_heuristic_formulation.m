@@ -4,9 +4,11 @@
 %                            0 0 0 400 0;
 %                            0 0 0 0 0;
 %                            0 0 0 0 0];
-adj = randomGraph(10,20);
+adj = random_planar_graph(20);
 network.adjacency_matrix = triu((adj + adj') * 1000, 1);
-clear adj;
+connection_indexes = find(network.adjacency_matrix!=0);
+network.adjacency_matrix(connection_indexes) = network.adjacency_matrix(connection_indexes) .* randi([1,3], size(connection_indexes));
+clear adj connection_indexes;
 [network.edge_rows, network.edge_cols, network.edge_values] = find(network.adjacency_matrix);
 network.adjacent_edge_list = {};
 for node = 1:length(network.adjacency_matrix)(1)
