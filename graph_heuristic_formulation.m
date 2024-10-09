@@ -228,7 +228,8 @@ end
 function solution = greedySolution(network, params)
     % Route trains sequentially
     solution = rand(1, params.n_timesteps * 2);
-    for i_train = 2:params.n_trains
+    i_train = 2;
+    while i_train <= params.n_trains
         clc; disp(["Greedy Placement: ", mat2str(round(i_train/params.n_trains * 100)), "%"]);
         abort = 1;
         score = -Inf;
@@ -237,14 +238,16 @@ function solution = greedySolution(network, params)
             traj_set = constructTrajectorySet(network, new_solution, params.initial_positions(1:i_train, :), params.initial_speeds(1:i_train), params.max_accel, params.max_speed);
             score = objectiveFunction(network, traj_set, params.min_separation, params.max_speed);
 
-            if abort > 1000
-                warning("Failed to find valid placement.");
-                solution = [];
-                return;
-            end
             abort++;
+            if abort > 1000
+                warning("Failed to find valid placement. Trying from scratch..");
+                new_solution = rand(1, params.n_timesteps * 2);
+                i_train = 1;
+                break;
+            end
         end
         solution = new_solution;
+        i_train++;
     end
 end
 
