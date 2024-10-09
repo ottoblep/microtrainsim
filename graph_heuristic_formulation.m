@@ -160,8 +160,8 @@ function score = objectiveFunction(network, traj_set, min_separation, max_speed)
 
     %% Separation Penalties
     % For each train pair update the minimum time to collision then skip that time and check again
-    n_trains = size(traj_set)(1);
-    n_timesteps = size(traj_set)(3);
+    n_trains = size(traj_set, 1);
+    n_timesteps = size(traj_set, 3);
     parfor i_train = 1:n_trains
         for j_train = i_train+1:n_trains
             timestep = 1;
@@ -226,26 +226,32 @@ function solution = randomSolution(params)
 end
 
 function solution = greedySolution(network, params)
-    % Route trains sequentially
+    % Find valid routes sequentially
     solution = rand(1, params.n_timesteps * 2);
+    traj_set(1,:,:) = constructTrajectory(network, solution, params.initial_positions(1,:), params.initial_speeds(1), params.max_accel, params.max_speed);
     i_train = 2;
     while i_train <= params.n_trains
         clc; disp(["Greedy Placement: ", mat2str(round(i_train/params.n_trains * 100)), "%"]);
         abort = 1;
         score = -Inf;
         while score < 0
-            new_solution = cat(1, solution, rand(1, params.n_timesteps * 2));
-            traj_set = constructTrajectorySet(network, new_solution, params.initial_positions(1:i_train, :), params.initial_speeds(1:i_train), params.max_accel, params.max_speed);
-            score = objectiveFunction(network, traj_set, params.min_separation, params.max_speed);
+            new_train_solution = rand(1, params.n_timesteps * 2);
+            new_traj = constructTrajectory(network, new_train_solution, params.initial_positions(i_train,:), params.initial_speeds(i_train), params.max_accel, params.max_speed);
+            new_traj_set = cat(1, traj_set, reshape(new_traj, 1, size(new_traj,1), size(new_traj,2)));
+            new_solution = cat(1, solution, new_train_solution);
+            score = objectiveFunction(network, new_traj_set, params.min_separation, params.max_speed);
 
             abort++;
             if abort > 1000
                 warning("Failed to find valid placement. Trying from scratch..");
                 new_solution = rand(1, params.n_timesteps * 2);
+                new_traj_set = [];
+                new_traj_set(1,:,:) = constructTrajectory(network, new_solution, params.initial_positions(1,:), params.initial_speeds(1), params.max_accel, params.max_speed);
                 i_train = 1;
                 break;
             end
         end
+        traj_set = new_traj_set;
         solution = new_solution;
         i_train++;
     end
