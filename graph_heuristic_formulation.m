@@ -219,12 +219,36 @@ function distance = trainDistance(network, traj_set, i_train, j_train, timestep)
     end
 end
 
-%% Search algorithms
-
+%% Solution Generation 
 
 function solution = randomSolution(params)
     solution = rand(params.n_trains, params.n_timesteps * 2);
 end
+
+function solution = greedySolution(network, params)
+    % Route trains sequentially
+    solution = rand(1, params.n_timesteps * 2);
+    for i_train = 2:params.n_trains
+        clc; disp(["Greedy Placement: ", mat2str(round(i_train/params.n_trains * 100)), "%"]);
+        abort = 1;
+        score = -Inf;
+        while score < 0
+            new_solution = cat(1, solution, rand(1, params.n_timesteps * 2));
+            traj_set = constructTrajectorySet(network, new_solution, params.initial_positions(1:i_train, :), params.initial_speeds(1:i_train), params.max_accel, params.max_speed);
+            score = objectiveFunction(network, traj_set, params.min_separation, params.max_speed);
+
+            if abort > 1000
+                warning("Failed to find valid placement.");
+                solution = [];
+                return;
+            end
+            abort++;
+        end
+        solution = new_solution;
+    end
+end
+
+%% Search Methods
 
 function randomSearch(network, params)
     csvwrite("network.csv", network.adjacency_matrix);
@@ -234,7 +258,25 @@ function randomSearch(network, params)
         tic
         sol = randomSolution(params);
         traj_set = constructTrajectorySet(network, sol, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
-        new_score = objectiveFunction(params, traj_set);
+        new_score = objectiveFunction(network, traj_set, params.min_separation, params.max_speed);
+        if score < new_score
+            best_traj_set = traj_set;
+            score = new_score
+            csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
+            csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
+        end
+    end
+end
+
+function greedySearch(network, params)
+    csvwrite("network.csv", network.adjacency_matrix);
+    score = -Inf;
+    best_traj_set = [];
+    while score < 0
+        tic
+        sol = greedySolution(network, params);
+        traj_set = constructTrajectorySet(network, sol, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
+        new_score = objectiveFunction(network, traj_set, params.min_separation, params.max_speed);
         if score < new_score
             best_traj_set = traj_set;
             score = new_score
@@ -276,4 +318,4 @@ function localSearch(network, params)
     end
 end
 
-localSearch(network, params);
+greedySearch(network, params);
