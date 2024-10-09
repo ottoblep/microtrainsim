@@ -279,7 +279,7 @@ function randomSearch(network, params)
     end
 end
 
-function greedySearch(network, params)
+function greedyRandomSearch(network, params)
     csvwrite("network.csv", network.adjacency_matrix);
     score = -Inf;
     best_traj_set = [];
@@ -329,4 +329,4 @@ function localSearch(network, params)
     end
 end
 
-greedySearch(network, params);
+greedyRandomSearch(network, params);
