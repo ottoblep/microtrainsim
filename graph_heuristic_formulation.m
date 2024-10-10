@@ -4,10 +4,10 @@
 %                            0 0 0 400 0;
 %                            0 0 0 0 0;
 %                            0 0 0 0 0];
-adj = random_planar_graph(20);
+adj = random_planar_graph(3000);
 network.adjacency_matrix = triu((adj + adj') * 1000, 1);
 connection_indexes = find(network.adjacency_matrix!=0);
-network.adjacency_matrix(connection_indexes) = network.adjacency_matrix(connection_indexes) .* randi([1,3], size(connection_indexes));
+network.adjacency_matrix(connection_indexes) = network.adjacency_matrix(connection_indexes) .* randi([1,100], size(connection_indexes));
 clear adj connection_indexes;
 [network.edge_rows, network.edge_cols, network.edge_values] = find(network.adjacency_matrix);
 network.adjacent_edge_list = {};
@@ -24,7 +24,7 @@ clear distances;
 
 %% Parameters
 params.n_timesteps = 8640; % 10s timesteps for one whole day
-params.n_trains = 10;
+params.n_trains = 500;
 params.min_separation = 100; % m
 params.max_speed = 1.11; % m/10s 200km/h
 params.max_accel = 46.27; % m/(10s)² 0-100kmh in 1m
