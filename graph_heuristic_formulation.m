@@ -35,7 +35,9 @@ params.initial_positions(:,2) = rand(params.n_trains,1);
 params.initial_positions(:,3) = randi([0,1],params.n_trains,1) * 2 - 1;
 params.initial_speeds = (rand(params.n_trains,1) * 2 - 1) * params.max_speed;
 
-function traj_set = constructTrajectorySet(network, solution, initial_positions, initial_speeds, max_accel, max_speed)
+%% Solution Construction
+
+function [traj_set, event_set] = constructTrajectorySet(network, solution, initial_positions, initial_speeds, max_accel, max_speed)
     %% Constructs a set of train trajectories on the graph
     % solution dimensions (n_trains, timestep * 2)
     % solution values (acceleration 0-1, direction 0-1)
@@ -43,15 +45,17 @@ function traj_set = constructTrajectorySet(network, solution, initial_positions,
     % initial position values (edge 0-n, position on edge 0-1)
     % initial speed dimensions (n_trains)
     % initial speed values (speed: -max_speed-max_speed)
-    % trajectory dimensions (n_trains, 3, timestep)
-    % trajectory values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
+    % traj_set dimensions (n_trains, 3, timestep)
+    % traj_set values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
+    % event_set dimenstions (n_trains, (2xn))
+    % event_set values ((presence_at_node, timestep))
     n_trains = size(solution)(1);
     for i_train = 1:n_trains
-        traj_set(i_train, :, :) = constructTrajectory(network, solution(i_train,:), initial_positions(i_train, :), initial_speeds(i_train), max_accel, max_speed);
+        [traj_set(i_train, :, :), event_set{i_train}] = constructTrajectory(network, solution(i_train,:), initial_positions(i_train, :), initial_speeds(i_train), max_accel, max_speed);
     end
 end
 
-function traj = constructTrajectory(network, solution, initial_position, initial_speed, max_accel, max_speed)
+function [traj, events] = constructTrajectory(network, solution, initial_position, initial_speed, max_accel, max_speed)
     %% Constructs a single train trajectory on the graph
     % solution dimensions (timestep * 2)
     % solution values (acceleration 0-1, direction 0-1)
@@ -61,22 +65,23 @@ function traj = constructTrajectory(network, solution, initial_position, initial
     % initial speed values (speed: -max_speed-max_speed)
     % trajectory dimensions (3, timestep)
     % trajectory values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
+    % events dimensions (2, n)
+    % events values (presence_at_node, timestep)
     assert(~any(solution>1));
     assert(~any(solution<0));
 
     n_timesteps = size(solution)(2) / 2;
 
-    %% Calculate speed curves
+    %% Calculate speed and position curves
     % Speed is relative to train orientation
     acceleration = solution(1:n_timesteps);
     speeds = initial_speed + cumtrapz(((acceleration * 2) - 1) * max_accel);
     # Do not accelerate over maximum
     speeds(speeds>max_speed) = max_speed;
     speeds(speeds<-max_speed) = -max_speed;
-
-    %% Calculate position curves
     position = cumtrapz(speeds);
 
+    events = [];
     traj(1, :) = initial_position(1);
     traj(2, :) = initial_position(2);
     traj(3, :) = initial_position(3);
@@ -112,6 +117,9 @@ function traj = constructTrajectory(network, solution, initial_position, initial
             node_entrance_direction = -traj(3, pivot_timestep);
             extra_movement = edge_trajectory(next_pivot_timestep - (pivot_timestep - 1)) + remaining_backward_length;
         end
+
+        % Log node traversal
+        events(:, end+1) = [traversed_node, pivot_timestep];
 
         % Decide on next edge
         viable_next_edges = network.adjacent_edge_list{traversed_node};
@@ -154,7 +162,9 @@ function traj = constructTrajectory(network, solution, initial_position, initial
     traj(:, n_timesteps) = traj(:, n_timesteps-1);
 end
 
-function score = objectiveFunction(network, traj_set, min_separation, max_speed)
+%% Objective Evalutation
+
+function score = collisionPenalties(network, traj_set, min_separation, max_speed)
     %% Evaluates a set of train trajectories
     % trajectory_set dimensions (n_trains, 3, timestep)
     % trajectory_set values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
@@ -186,6 +196,20 @@ function score = objectiveFunction(network, traj_set, min_separation, max_speed)
     %% Objective evaluation
     score = -penalty;
 end
+
+function score = demandSatisfaction(network, event_set, demand_matrix, min_transfer_time, max_transfer_time)
+    %% Evaluates satisfied demand for a given set of arrival/departure timesteps 
+    % event_set dimenstions (n_trains, (2xn))
+    % event_set values ((presence_at_node, timestep))
+
+    % Construct a graph for possible passenger movements
+    n_stations = size(network.adjacency_matrix, 1);
+
+    % Solve flow assignment
+
+end
+
+%% Helper Functions
 
 function distance = trainDistance(network, traj_set, i_train, j_train, timestep)
     %% Calculates distance of two trains given a set of trajectories
@@ -241,7 +265,7 @@ function solution = greedySolution(network, params)
             new_traj = constructTrajectory(network, new_train_solution, params.initial_positions(i_train,:), params.initial_speeds(i_train), params.max_accel, params.max_speed);
             new_traj_set = cat(1, traj_set, reshape(new_traj, 1, size(new_traj,1), size(new_traj,2)));
             new_solution = cat(1, solution, new_train_solution);
-            score = objectiveFunction(network, new_traj_set, params.min_separation, params.max_speed);
+            score = collisionPenalties(network, new_traj_set, params.min_separation, params.max_speed);
 
             abort++;
             if abort > 1000
@@ -261,7 +285,7 @@ end
 
 %% Search Methods
 
-function randomSearch(network, params)
+function randomSearch(network, params, greedy)
     csvwrite("network.csv", network.adjacency_matrix);
     score = -Inf;
     best_traj_set = [];
@@ -270,10 +294,10 @@ function randomSearch(network, params)
         if greedy
             sol = greedySolution(network, params);
         else
-        sol = randomSolution(params);
+            sol = randomSolution(params);
         end
         traj_set = constructTrajectorySet(network, sol, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
-        new_score = objectiveFunction(network, traj_set, params.min_separation, params.max_speed);
+        new_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
         if score < new_score
             best_traj_set = traj_set;
             score = new_score
@@ -291,14 +315,14 @@ function localSearch(network, params)
         improvement = Inf; 
         abort = 0;
         solution = randomSolution(params);
-        score = objectiveFunction(network, constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed), params.min_separation, params.max_speed);
+        score = collisionPenalties(network, constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed), params.min_separation, params.max_speed);
 
         while improvement > 100 && abort < 100
             preturbed_solution = solution + (rand(params.n_trains, params.n_timesteps * 2) - 0.5);
             preturbed_solution(preturbed_solution > 1) = 1;
             preturbed_solution(preturbed_solution < 0) = 0;
             traj_set = constructTrajectorySet(network, preturbed_solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
-            new_score = objectiveFunction(network, traj_set, params.min_separation, params.max_speed);
+            new_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
 
             if new_score > score
                 if new_score > global_score
