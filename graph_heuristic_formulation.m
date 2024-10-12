@@ -77,8 +77,7 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
 
     n_timesteps = size(solution,2) / 2;
 
-    %% Calculate speed and position curves
-    % Speed is relative to train orientation
+    % Calculate speed and position curves relative to train orientation
     acceleration = solution(1:n_timesteps);
     speeds = initial_speed + cumtrapz(((acceleration * 2) - 1) * max_accel);
     % Do not accelerate over maximum
@@ -112,7 +111,7 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
         traj(2, pivot_timestep:next_pivot_timestep-1) = traj(2, pivot_timestep) + edge_trajectory(1:next_pivot_timestep - (pivot_timestep-1) - 1) / current_edge_length;
         traj(3, pivot_timestep:next_pivot_timestep-1) = traj(3, pivot_timestep);
 
-        %% Leave current edge
+        % Leave current edge
         % node_traversal_direction = edge_exit_point XNOR old_train_orientation
         if edge_exit_point
             traversed_node = network.edge_cols(traj(1, pivot_timestep));
@@ -178,7 +177,7 @@ function score = collisionPenalties(network, traj_set, min_separation, max_speed
     % trajectory_set values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
     penalty = 0;
 
-    %% Separation Penalties
+    % Separation Penalties
     % For each train pair update the minimum time to collision then skip that time and check again
     n_trains = size(traj_set, 1);
     n_timesteps = size(traj_set, 3);
@@ -201,7 +200,6 @@ function score = collisionPenalties(network, traj_set, min_separation, max_speed
         end
     end
 
-    %% Objective evaluation
     score = -penalty;
 end
 
@@ -283,18 +281,18 @@ function g = constructTransferGraph(network, event_set, max_changeover_time, tra
     g = zeros(2 * n_stations + n_stops);
 
     for i_stop = 1:n_stops
+        % Connect demand source (A)
+        g(event_set(1, i_stop), n_stations + i_stop) = Inf;
+
+        % Connect demand sink (C)
+        g(n_stations + i_stop, n_stations + n_stops + event_set(1,i_stop)) = Inf;
+
         % Add train trips as edges (B)
         if i_stop > 1
             if event_set(3, i_stop - 1) == event_set(3, i_stop)
                 g(n_stations+i_stop, n_stations + i_stop-1) = train_capacity;
             end
         end
-
-        % Connect demand source (A)
-        g(event_set(1, i_stop), n_stations + i_stop) = Inf;
-
-        % Connect demand sink (C)
-        g(n_stations + i_stop, n_stations + n_stops + event_set(1,i_stop)) = Inf;
     end
 
     for i_station = 1:n_stations
@@ -314,7 +312,6 @@ function g = constructTransferGraph(network, event_set, max_changeover_time, tra
     end
 end
 
-
 function distance = trainDistance(network, traj_set, i_train, j_train, timestep)
     %% Calculates distance of two trains given a set of trajectories
     % trajectory_set dimensions (n_trains, 3, timestep)
@@ -329,7 +326,7 @@ function distance = trainDistance(network, traj_set, i_train, j_train, timestep)
     if edge_i == edge_j
         distance = abs(traj_set(i_train, 2, timestep) - traj_set(j_train, 2, timestep)) * i_edge_length;
     else
-        %% Find shortest path with precomputed distance matrix
+        % Find shortest path with precomputed distance matrix
         i_node_backward = network.edge_rows(edge_i);
         i_node_forward = network.edge_cols(edge_i);
         j_node_backward = network.edge_rows(edge_j);
@@ -356,7 +353,7 @@ function solution = randomSolution(params)
 end
 
 function solution = greedySolution(network, params)
-    % Find valid routes sequentially
+    %% Brute-forces valid routes sequentially
     solution = rand(1, params.n_timesteps * 2);
     traj_set(1,:,:) = constructTrajectory(network, solution, params.initial_positions(1,:), params.initial_speeds(1), params.max_accel, params.max_speed);
     i_train = 2;
