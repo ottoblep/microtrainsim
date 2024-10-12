@@ -101,7 +101,7 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
         % Find next edge change
         edge_trajectory = traj(3, pivot_timestep) * (position(pivot_timestep:end) - base_position);
         next_pivot_timestep = (pivot_timestep - 1) + find((edge_trajectory > remaining_forward_length | edge_trajectory < -remaining_backward_length), 1);
-        forward_exit = any((edge_trajectory(next_pivot_timestep - (pivot_timestep - 1)) > remaining_forward_length));
+        edge_exit_point = any((edge_trajectory(next_pivot_timestep - (pivot_timestep - 1)) > remaining_forward_length));
         if isempty(next_pivot_timestep)
             next_pivot_timestep = n_timesteps;
         end
@@ -113,17 +113,17 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
         traj(3, pivot_timestep:next_pivot_timestep-1) = traj(3, pivot_timestep);
 
         %% Leave current edge
-        if forward_exit
+        % node_traversal_direction = edge_exit_point XNOR old_train_orientation
+        if edge_exit_point
             traversed_node = network.edge_cols(traj(1, pivot_timestep));
-            node_entrance_direction = traj(3, pivot_timestep);
+            node_traversal_direction = traj(3, pivot_timestep);
             extra_movement = edge_trajectory(next_pivot_timestep - (pivot_timestep - 1)) - remaining_forward_length;
         else
             traversed_node = network.edge_rows(traj(1, pivot_timestep));
-            node_entrance_direction = -traj(3, pivot_timestep);
+            node_traversal_direction = -traj(3, pivot_timestep);
             extra_movement = edge_trajectory(next_pivot_timestep - (pivot_timestep - 1)) + remaining_backward_length;
         end
 
-        % Log node traversal
         events(:, end+1) = [traversed_node, next_pivot_timestep];
 
         % Decide on next edge
@@ -134,7 +134,7 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
             % Stay stationary until trajectory comes back around
             % Use the old base position and forw/backw lengths
             deadend_edge_trajectory = traj(3, pivot_timestep) * (position(next_pivot_timestep:end) - base_position);
-            if forward_exit
+            if edge_exit_point
                 deadend_next_pivot_timestep = (next_pivot_timestep - 1) + find(deadend_edge_trajectory < remaining_forward_length, 1);
             else
                 deadend_next_pivot_timestep = (next_pivot_timestep - 1) + find(deadend_edge_trajectory > -remaining_backward_length, 1);
@@ -146,7 +146,7 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
 
             % Set position and train direction as stationary
             traj(1, next_pivot_timestep:deadend_next_pivot_timestep) = traj(1, pivot_timestep);
-            traj(2, next_pivot_timestep:deadend_next_pivot_timestep) = double(forward_exit);
+            traj(2, next_pivot_timestep:deadend_next_pivot_timestep) = double(edge_exit_point);
             traj(3, next_pivot_timestep:deadend_next_pivot_timestep) = traj(3, pivot_timestep);
 
             pivot_timestep = deadend_next_pivot_timestep;
@@ -154,11 +154,14 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
             next_edge_selection = 1 + round(solution(n_timesteps + pivot_timestep) * (length(viable_next_edges) - 1));
             next_edge = viable_next_edges(next_edge_selection);
 
-            % Set position and train direction on new edge
-            edge_entrance_direction = (network.edge_rows(next_edge) == traversed_node);
-            traj(1, next_pivot_timestep) = next_edge; % edge number
-            traj(2, next_pivot_timestep) = not(edge_entrance_direction) + (edge_entrance_direction*2 - 1) * abs(extra_movement / network.edge_values(next_edge)); % position on edge
-            traj(3, next_pivot_timestep) = (edge_entrance_direction*2 - 1) * node_entrance_direction; % orientation on edge
+            edge_entrance_point = (network.edge_cols(next_edge) == traversed_node);
+            % New Edge
+            traj(1, next_pivot_timestep) = next_edge;
+            % New Position on Edge
+            traj(2, next_pivot_timestep) = edge_entrance_point + (-1) * (edge_entrance_point*2 - 1) * abs(extra_movement / network.edge_values(next_edge));
+            % New Orientation on Edge
+            % new_train_orientation      =         edge_entrance_point      XOR node_traversal_direction    ( XNOR is multiplication )
+            traj(3, next_pivot_timestep) = (-1) * (edge_entrance_point*2 - 1) * node_traversal_direction;
 
             pivot_timestep = next_pivot_timestep;
         end
