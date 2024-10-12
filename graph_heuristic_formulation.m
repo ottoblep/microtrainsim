@@ -6,21 +6,20 @@
 %                            0 0 0 0 0];
 adj = random_planar_graph(3000);
 network.adjacency_matrix = triu((adj + adj') * 1000, 1);
-connection_indexes = find(network.adjacency_matrix!=0);
-network.adjacency_matrix(connection_indexes) = network.adjacency_matrix(connection_indexes) .* randi([1,100], size(connection_indexes));
+connection_indexes = find(network.adjacency_matrix~=0);
+network.adjacency_matrix(connection_indexes) = network.adjacency_matrix(connection_indexes) .* (randi([1,5],size(connection_indexes)));
 clear adj connection_indexes;
 [network.edge_rows, network.edge_cols, network.edge_values] = find(network.adjacency_matrix);
 network.adjacent_edge_list = {};
-for node = 1:length(network.adjacency_matrix)(1)
+for node = 1:size(network.adjacency_matrix,1)
     network.adjacent_edge_list{node} = find((network.edge_rows == node) | (network.edge_cols == node));
 end
 
 %% All shortest path pairs
-distances = network.adjacency_matrix + network.adjacency_matrix';
-distances(distances==0) = Inf;
-distances(logical(eye(size(distances)))) = 0;
-network.all_shortest_paths = FastFloyd(distances);
-clear distances;
+tmp_adj = network.adjacency_matrix;
+tmp_adj(tmp_adj==0) = Inf;
+network.all_shortest_paths = distances(graph(tmp_adj,'upper'), 'Method', 'positive');
+clear tmp_adj;
 
 %% Parameters
 params.n_timesteps = 8640; % 10s timesteps for one whole day
