@@ -28,8 +28,10 @@ params.min_separation = 100; % m
 params.max_speed = 1.11; % m/10s 200km/h
 params.max_accel = 46.27; % m/(10s)² 0-100kmh in 1m
 params.max_changeover_time = 1440; % 4hrs
+params.train_capacity = 10;
 
-% initial_speed dimensions (n_trains, 1) values (velocity 0-1)
+params.demand_matrix = rand(size(network.adjacency_matrix,1)) * 100;
+params.demand_matrix(logical(eye(size(params.demand_matrix)))) = 0;
 params.initial_positions = randi([1,length(network.edge_values)], params.n_trains, 3);
 params.initial_positions(:,2) = rand(params.n_trains,1);
 params.initial_positions(:,3) = randi([0,1],params.n_trains,1) * 2 - 1;
@@ -200,21 +202,70 @@ function score = collisionPenalties(network, traj_set, min_separation, max_speed
     score = -penalty;
 end
 
-function score = demandSatisfaction(network, event_set, max_changeover_time)
+function score = demandSatisfaction(network, event_set, demand_matrix, max_changeover_time, train_capacity)
     %% Evaluates satisfied demand for a given set of arrival/departure timesteps 
     % event_set dimenstions (3, n))
     % event_set values (presence_at_node, timestep, train)
 
-    g = constructTransferGraph(network, event_set, max_changeover_time);
+    g = constructTransferGraph(network, event_set, max_changeover_time, train_capacity);
 
-    % Solve flow assignment
+    n_nodes = size(g,1);
+    n_edges = n_nodes^2;
+    n_stations = size(network.adjacency_matrix,1);
+    n_demands = n_stations^2;
+    n_decision_vars = n_edges + n_demands;
+
+    %% Link Flow Model for each demand relation with global capacity constraints - Maximize carried demand
+
+    % Decision Variables:
+
+    % - edge flows, real positive, per edge
+    % - carried demand, real positive, per directed node combination
+
+    % Objective:
+
+    % - maximize sum of carried demand
+    f = cat(1, zeros(n_edges, 1), -1 * ones(n_demands, 1));
+
+    % Constraints:
+
+    % - vertex flow conservation constraint, equality, per demand relation, per node 
+
+    %                 | Edges | Demands |
+    % Demand 1        |       | 1 0 0  |
+    %           Nodes |   A   | 0 0 -1 | = 0
+    %                 |       | 0 0 0  |
+    % Demand 2        |       | 0 0 -1 |
+    %           Nodes |   B   | 1 0 0  | = 0
+    %                 |       | 0 0 0  |
+    % Demand 3        |       | 1 0 0  |
+    %           Nodes |   C   | 0 -1 0 | = 0
+    %                 |       | 0 0 0  |
+    % Aeq = zeros(n_demands*n_nodes,n_decision_vars);
+    % beq = zeros(n_decision_vars, 1);
+    % for i_demand = 1:n_demands
+    %     for i_node = 1:n_nodes
+    %     end
+    % end
+
+    % - available demand constraint, inequality, per demand
+    % - edge capacity constraint, inequality, per edge
+
+    %         | Edges | Demands |
+    % Edges   |   I   |   0     | <= A
+    % Demands |   0   |   I     | <= B
+    % A = zeros(n_decision_vars, n_decision_vars);
+    % A(1:n_edges, 1:n_edges) = eye(n_edges);
+    % A(n_edges+1:end, n_edges+1:end) = eye(n_demands);
+
+    % b = zeros(n_decision_vars, 1);
 
     score = 1;
 end
 
 %% Helper Functions
 
-function g = constructTransferGraph(network, event_set, max_changeover_time)
+function g = constructTransferGraph(network, event_set, max_changeover_time, train_capacity)
     %% Construct a graph of possible passenger/freight movements using train arrivals/departures
     n_stations = size(network.adjacency_matrix,1);
     n_stops = size(event_set, 2);
@@ -232,15 +283,15 @@ function g = constructTransferGraph(network, event_set, max_changeover_time)
         % Add train trips as edges (B)
         if i_stop > 1
             if event_set(3, i_stop - 1) == event_set(3, i_stop)
-                g(n_stations+i_stop, n_stations + i_stop-1) = 1;
+                g(n_stations+i_stop, n_stations + i_stop-1) = train_capacity;
             end
         end
 
         % Connect demand source (A)
-        g(event_set(1, i_stop), n_stations + i_stop) = 1;
+        g(event_set(1, i_stop), n_stations + i_stop) = Inf;
 
         % Connect demand sink (C)
-        g(n_stations + i_stop, n_stations + n_stops + event_set(1,i_stop)) = 1;
+        g(n_stations + i_stop, n_stations + n_stops + event_set(1,i_stop)) = Inf;
     end
 
     for i_station = 1:n_stations
@@ -254,7 +305,7 @@ function g = constructTransferGraph(network, event_set, max_changeover_time)
 
         for i_idx_sorted_station_visits = 2:length(idx_sorted_station_visits)
             if event_set(2, idx_sorted_station_visits(i_idx_sorted_station_visits)) < event_set(2, idx_sorted_station_visits(i_idx_sorted_station_visits-1)) + max_changeover_time
-                g(n_stations + idx_sorted_station_visits(i_idx_sorted_station_visits-1), n_stations + idx_sorted_station_visits(i_idx_sorted_station_visits)) = 1;
+                g(n_stations + idx_sorted_station_visits(i_idx_sorted_station_visits-1), n_stations + idx_sorted_station_visits(i_idx_sorted_station_visits)) = Inf;
             end
         end
     end
@@ -346,7 +397,7 @@ function randomSearch(network, params, greedy)
             sol = randomSolution(params);
         end
         [traj_set, event_set] = constructTrajectorySet(network, sol, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
-        demand_score = demandSatisfaction(network, event_set, params.max_changeover_time);
+        demand_score = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
         new_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
         if score < new_score
             best_traj_set = traj_set;
