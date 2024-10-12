@@ -4,10 +4,10 @@
 %                            0 0 0 400 0;
 %                            0 0 0 0 0;
 %                            0 0 0 0 0];
-adj = random_planar_graph(3000);
+adj = random_planar_graph(4);
 network.adjacency_matrix = triu((adj + adj') * 1000, 1);
 connection_indexes = find(network.adjacency_matrix~=0);
-network.adjacency_matrix(connection_indexes) = network.adjacency_matrix(connection_indexes) .* (randi([1,5],size(connection_indexes)));
+network.adjacency_matrix(connection_indexes) = network.adjacency_matrix(connection_indexes) .* (randi([1,3],size(connection_indexes)));
 clear adj connection_indexes;
 [network.edge_rows, network.edge_cols, network.edge_values] = find(network.adjacency_matrix);
 network.adjacent_edge_list = {};
@@ -23,10 +23,11 @@ clear tmp_adj;
 
 %% Parameters
 params.n_timesteps = 8640; % 10s timesteps for one whole day
-params.n_trains = 500;
+params.n_trains = 4;
 params.min_separation = 100; % m
 params.max_speed = 1.11; % m/10s 200km/h
 params.max_accel = 46.27; % m/(10s)² 0-100kmh in 1m
+params.max_changeover_time = 1440; % 4hrs
 
 % initial_speed dimensions (n_trains, 1) values (velocity 0-1)
 params.initial_positions = randi([1,length(network.edge_values)], params.n_trains, 3);
@@ -46,11 +47,14 @@ function [traj_set, event_set] = constructTrajectorySet(network, solution, initi
     % initial speed values (speed: -max_speed-max_speed)
     % traj_set dimensions (n_trains, 3, timestep)
     % traj_set values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
-    % event_set dimenstions (n_trains, (2xn))
-    % event_set values ((presence_at_node, timestep))
-    n_trains = size(solution)(1);
+    % event_set dimensions (3, n))
+    % event_set values (presence_at_node, timestep, train)
+    n_trains = size(solution,1);
+    event_set = [];
     for i_train = 1:n_trains
-        [traj_set(i_train, :, :), event_set{i_train}] = constructTrajectory(network, solution(i_train,:), initial_positions(i_train, :), initial_speeds(i_train), max_accel, max_speed);
+        [traj_set(i_train, :, :), new_events] = constructTrajectory(network, solution(i_train,:), initial_positions(i_train, :), initial_speeds(i_train), max_accel, max_speed);
+        new_events(3,:) = i_train;
+        event_set = cat(2, event_set, new_events);
     end
 end
 
@@ -69,13 +73,13 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
     assert(~any(solution>1));
     assert(~any(solution<0));
 
-    n_timesteps = size(solution)(2) / 2;
+    n_timesteps = size(solution,2) / 2;
 
     %% Calculate speed and position curves
     % Speed is relative to train orientation
     acceleration = solution(1:n_timesteps);
     speeds = initial_speed + cumtrapz(((acceleration * 2) - 1) * max_accel);
-    # Do not accelerate over maximum
+    % Do not accelerate over maximum
     speeds(speeds>max_speed) = max_speed;
     speeds(speeds<-max_speed) = -max_speed;
     position = cumtrapz(speeds);
@@ -118,15 +122,15 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
         end
 
         % Log node traversal
-        events(:, end+1) = [traversed_node, pivot_timestep];
+        events(:, end+1) = [traversed_node, next_pivot_timestep];
 
         % Decide on next edge
         viable_next_edges = network.adjacent_edge_list{traversed_node};
-        viable_next_edges = viable_next_edges(viable_next_edges!=traj(1, pivot_timestep));
+        viable_next_edges = viable_next_edges(viable_next_edges~=traj(1, pivot_timestep));
 
         if isempty(viable_next_edges)
             % Stay stationary until trajectory comes back around
-            # Use the old base position and forw/backw lengths
+            % Use the old base position and forw/backw lengths
             deadend_edge_trajectory = traj(3, pivot_timestep) * (position(next_pivot_timestep:end) - base_position);
             if forward_exit
                 deadend_next_pivot_timestep = (next_pivot_timestep - 1) + find(deadend_edge_trajectory < remaining_forward_length, 1);
@@ -150,9 +154,9 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
 
             % Set position and train direction on new edge
             edge_entrance_direction = (network.edge_rows(next_edge) == traversed_node);
-            traj(1, next_pivot_timestep) = next_edge; # edge number
-            traj(2, next_pivot_timestep) = not(edge_entrance_direction) + (edge_entrance_direction*2 - 1) * abs(extra_movement / network.edge_values(next_edge)); # position on edge
-            traj(3, next_pivot_timestep) = (edge_entrance_direction*2 - 1) * node_entrance_direction; # orientation on edge
+            traj(1, next_pivot_timestep) = next_edge; % edge number
+            traj(2, next_pivot_timestep) = not(edge_entrance_direction) + (edge_entrance_direction*2 - 1) * abs(extra_movement / network.edge_values(next_edge)); % position on edge
+            traj(3, next_pivot_timestep) = (edge_entrance_direction*2 - 1) * node_entrance_direction; % orientation on edge
 
             pivot_timestep = next_pivot_timestep;
         end
@@ -196,19 +200,66 @@ function score = collisionPenalties(network, traj_set, min_separation, max_speed
     score = -penalty;
 end
 
-function score = demandSatisfaction(network, event_set, demand_matrix, min_transfer_time, max_transfer_time)
+function score = demandSatisfaction(network, event_set, max_changeover_time)
     %% Evaluates satisfied demand for a given set of arrival/departure timesteps 
-    % event_set dimenstions (n_trains, (2xn))
-    % event_set values ((presence_at_node, timestep))
+    % event_set dimenstions (3, n))
+    % event_set values (presence_at_node, timestep, train)
 
-    % Construct a graph for possible passenger movements
-    n_stations = size(network.adjacency_matrix, 1);
+    g = constructTransferGraph(network, event_set, max_changeover_time);
 
     % Solve flow assignment
 
+    score = 1;
 end
 
 %% Helper Functions
+
+function g = constructTransferGraph(network, event_set, max_changeover_time)
+    %% Construct a graph of possible passenger/freight movements using train arrivals/departures
+    n_stations = size(network.adjacency_matrix,1);
+    n_stops = size(event_set, 2);
+
+    % Initial Demand Source Nodes [1 : n_stations]
+    % Train route nodes [n_stations + 1 : n_stations+n_stops]
+    % Demand sink nodes [n_stations + n_stops + 1 : 2 * n_stations + n_stops]
+    %         | sources| routes|  sinks|
+    % sources |   0    |   A   |   0   |
+    % routes  |   0    |   B   |   C   |
+    % sinks   |   0    |   0   |   0   |
+    g = zeros(2 * n_stations + n_stops);
+
+    for i_stop = 1:n_stops
+        % Add train trips as edges (B)
+        if i_stop > 1
+            if event_set(3, i_stop - 1) == event_set(3, i_stop)
+                g(n_stations+i_stop, n_stations + i_stop-1) = 1;
+            end
+        end
+
+        % Connect demand source (A)
+        g(event_set(1, i_stop), n_stations + i_stop) = 1;
+
+        % Connect demand sink (C)
+        g(n_stations + i_stop, n_stations + n_stops + event_set(1,i_stop)) = 1;
+    end
+
+    for i_station = 1:n_stations
+        % Add station changeovers as edges (B)
+        % Find successive train visits within a changeover timeframe
+        idx_station_visits = find(event_set(1,:) == i_station);
+        station_visits = event_set(:, idx_station_visits);
+
+        [~, idx_sort_station_idxs] = sort(station_visits(2,:));
+        idx_sorted_station_visits = idx_station_visits(idx_sort_station_idxs);
+
+        for i_idx_sorted_station_visits = 2:length(idx_sorted_station_visits)
+            if event_set(2, idx_sorted_station_visits(i_idx_sorted_station_visits)) < event_set(2, idx_sorted_station_visits(i_idx_sorted_station_visits-1)) + max_changeover_time
+                g(n_stations + idx_sorted_station_visits(i_idx_sorted_station_visits-1), n_stations + idx_sorted_station_visits(i_idx_sorted_station_visits)) = 1;
+            end
+        end
+    end
+end
+
 
 function distance = trainDistance(network, traj_set, i_train, j_train, timestep)
     %% Calculates distance of two trains given a set of trajectories
@@ -256,7 +307,7 @@ function solution = greedySolution(network, params)
     traj_set(1,:,:) = constructTrajectory(network, solution, params.initial_positions(1,:), params.initial_speeds(1), params.max_accel, params.max_speed);
     i_train = 2;
     while i_train <= params.n_trains
-        clc; disp(["Greedy Placement: ", mat2str(round(i_train/params.n_trains * 100)), "%"]);
+        disp(["Greedy Placement: ", mat2str(round(i_train/params.n_trains * 100)), "%"]);
         abort = 1;
         score = -Inf;
         while score < 0
@@ -266,7 +317,7 @@ function solution = greedySolution(network, params)
             new_solution = cat(1, solution, new_train_solution);
             score = collisionPenalties(network, new_traj_set, params.min_separation, params.max_speed);
 
-            abort++;
+            abort = abort + 1;
             if abort > 1000
                 warning("Failed to find valid placement. Trying from scratch..");
                 new_solution = rand(1, params.n_timesteps * 2);
@@ -278,7 +329,7 @@ function solution = greedySolution(network, params)
         end
         traj_set = new_traj_set;
         solution = new_solution;
-        i_train++;
+        i_train = i_train + 1;
     end
 end
 
@@ -289,13 +340,13 @@ function randomSearch(network, params, greedy)
     score = -Inf;
     best_traj_set = [];
     while score < 0
-        tic
         if greedy
             sol = greedySolution(network, params);
         else
             sol = randomSolution(params);
         end
-        traj_set = constructTrajectorySet(network, sol, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
+        [traj_set, event_set] = constructTrajectorySet(network, sol, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
+        demand_score = demandSatisfaction(network, event_set, params.max_changeover_time);
         new_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
         if score < new_score
             best_traj_set = traj_set;
@@ -333,7 +384,7 @@ function localSearch(network, params)
                 abort = 0;
                 improvement = new_score - score;
             end
-            abort++;
+            abort = abort + 1;
         end
     end
 end
