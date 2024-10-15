@@ -207,59 +207,93 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     %% Evaluates satisfied demand for a given set of arrival/departure timesteps 
     % event_set dimenstions (3, n))
     % event_set values (presence_at_node, timestep, train)
+    assert(all(size(demand_matrix) == size(network.adjacency_matrix)));
 
     g = constructTransferGraph(network, event_set, max_changeover_time, train_capacity);
+    G = digraph(g);
+    g_edge_idxs = find(g);
 
-    n_nodes = size(g,1);
-    n_edges = n_nodes^2;
+    n_nodes = size(g,1); % n_stations + n_stops + n_stations
+    n_edges = numel(g_edge_idxs);
     n_stations = size(network.adjacency_matrix,1);
-    n_demands = n_stations^2;
-    n_decision_vars = n_edges + n_demands;
+    n_demands = n_stations^2 - n_stations;
+    n_decision_vars = (n_edges + 1)* n_demands;
 
-    %% Link Flow Model for each demand relation with global capacity constraints - Maximize carried demand
+    %% Splittable Multi-commodity maximum flow problem https://en.wikipedia.org/wiki/Multi-commodity_flow_problem
+    %  no loops, directed, positive weights
 
     % Decision Variables:
 
-    % - edge flows, real positive, per edge
-    % - carried demand, real positive, per directed node combination
+    % - edge flows, real positive, per demand, per edge
+    % - carried demand, real positive, per demand relation 
 
     % Objective:
 
     % - maximize sum of carried demand
-    f = cat(1, zeros(n_edges, 1), -1 * ones(n_demands, 1));
+    f = cat(1, zeros(n_edges * n_demands, 1), -1 * ones(n_demands, 1));
 
     % Constraints:
 
-    % - vertex flow conservation constraint, equality, per demand relation, per node 
+    % - vertex flow conservation constraint, equality, per demand relation, per node
 
-    %                 | Edges | Demands |
-    % Demand 1        |       | 1 0 0  |
-    %           Nodes |   A   | 0 0 -1 | = 0
-    %                 |       | 0 0 0  |
-    % Demand 2        |       | 0 0 -1 |
-    %           Nodes |   B   | 1 0 0  | = 0
-    %                 |       | 0 0 0  |
-    % Demand 3        |       | 1 0 0  |
-    %           Nodes |   C   | 0 -1 0 | = 0
-    %                 |       | 0 0 0  |
-    % Aeq = zeros(n_demands*n_nodes,n_decision_vars);
-    % beq = zeros(n_decision_vars, 1);
-    % for i_demand = 1:n_demands
-    %     for i_node = 1:n_nodes
-    %     end
-    % end
+    %  matrix size is demands * (edges+1) x demands * nodes =~ stations^4 * journeys^2
 
-    % - available demand constraint, inequality, per demand
+    %                           | Edge_flows D1 | Edge_flows D2 | carried demand | 
+    % Demand 1          Sources |               |               | 1  0  | 
+    %           Nodes   Stops   |      A        |       0       | -1 0  | 
+    %                   Sinks   |               |               | 0  0  | =   0
+    % Demand 2          Sources |               |               | 0  1  | 
+    %           Nodes   Stops   |      0        |       B       | 0 -1  | 
+    %                   Sinks   |               |               | 0  0  | 
+    Aeq = zeros(n_demands * n_nodes,n_decision_vars);
+    beq = zeros(n_decision_vars, 1);
+
+    % General flow constraint template in the network (A)
+    Aeq_single_flow = zeros(n_nodes, n_edges);
+    for i_node = 1:n_nodes
+        out_edges_idxs = outedges(G, i_node);
+        in_edges_idxs = inedges(G, i_node);
+        Aeq_single_flow(i_node, in_edges_idxs) = 1; % inflows 
+        Aeq_single_flow(i_node, out_edges_idxs) = -1; % outflows 
+    end
+    % source and sink nodes
+    assert(all(all(Aeq_single_flow(1:n_stations, :) <= 0)));
+    assert(all(all(Aeq_single_flow(end - n_stations + 1:end, :) >= 0)));
+
+    % Copy flow constraints per demand
+    k_demand = 1;
+    for i_demand_destination = 1:n_stations
+        for j_demand_source = 1:n_stations
+            if i_demand_destination ==  j_demand_source
+                continue
+            end
+
+            % copy flow constraint matrix (A,B)
+            Aeq((k_demand-1) * n_nodes + 1:k_demand * n_nodes, (k_demand-1) * n_edges + 1:k_demand * n_edges) = Aeq_single_flow;
+            % carried demand source node
+            Aeq((k_demand-1) * n_nodes + j_demand_source, n_demands * n_edges + k_demand) = 1;
+            % carried demand sink node
+            Aeq(k_demand * n_nodes - n_stations + i_demand_destination, n_demands * n_edges + k_demand) = -1;
+
+            k_demand = k_demand + 1;
+        end
+    end
+    % demand sources/sinks are balanced
+    assert(all(sum(Aeq(:,n_demands * n_edges + 1:end)) == zeros(1, n_demands)));
+
     % - edge capacity constraint, inequality, per edge
+    % - available demand constraint, inequality, per demand
 
-    %         | Edges | Demands |
-    % Edges   |   I   |   0     | <= A
-    % Demands |   0   |   I     | <= B
-    % A = zeros(n_decision_vars, n_decision_vars);
-    % A(1:n_edges, 1:n_edges) = eye(n_edges);
-    % A(n_edges+1:end, n_edges+1:end) = eye(n_demands);
+    %                 | Edges * Demands | Demands |
+    % Edges * Demands |   I             |   0     | <= A
+    % Demands         |   0             |   I     | <= B
+    A = eye(n_decision_vars);
 
-    % b = zeros(n_decision_vars, 1);
+    b = zeros(n_decision_vars, 1);
+    b(1:n_edges) = repmat(g(g_edge_idxs), n_demands);
+    b(end - n_demands + 1:end) = demand_matrix(1:numel(demand_matrix));
+
+    % Run Solver
 
     score = 1;
 end
