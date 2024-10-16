@@ -216,6 +216,7 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     n_nodes = size(g,1); % n_stations + n_stops + n_stations
     n_edges = numel(g_edge_idxs);
     n_stations = size(network.adjacency_matrix,1);
+    % Only nondiagonal entries in the demand matrix
     n_demands = n_stations^2 - n_stations;
     n_decision_vars = (n_edges + 1)* n_demands;
 
@@ -246,7 +247,7 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     %           Nodes   Stops   |      0        |       B       | 0 -1  | 
     %                   Sinks   |               |               | 0  0  | 
     Aeq = zeros(n_demands * n_nodes,n_decision_vars);
-    beq = zeros(n_decision_vars, 1);
+    beq = zeros(n_demands * n_nodes, 1);
 
     % General flow constraint template in the network (A)
     Aeq_single_flow = zeros(n_nodes, n_edges);
@@ -278,6 +279,7 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
             k_demand = k_demand + 1;
         end
     end
+    clear Aeq_single_flow;
     % demand sources/sinks are balanced
     assert(all(sum(Aeq(:,n_demands * n_edges + 1:end)) == zeros(1, n_demands)));
 
@@ -290,12 +292,16 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     A = eye(n_decision_vars);
 
     b = zeros(n_decision_vars, 1);
-    b(1:n_edges) = repmat(g(g_edge_idxs), n_demands);
-    b(end - n_demands + 1:end) = demand_matrix(1:numel(demand_matrix));
+    b(1:n_edges*n_demands) = repmat(g(g_edge_idxs), n_demands, 1);
+    b(end - n_demands + 1:end) = demand_matrix(~eye(size(demand_matrix)));
+
+    lb = zeros(n_decision_vars, 1);
 
     % Run Solver
 
-    score = 1;
+    [~,obj_val] = linprog(f, A, b, Aeq, beq, lb);
+
+    score = -obj_val / sum(demand_matrix,'all');
 end
 
 %% Helper Functions
@@ -422,20 +428,21 @@ end
 
 function randomSearch(network, params, greedy)
     csvwrite("network.csv", network.adjacency_matrix);
+    csvwrite("demands.csv", params.demand_matrix);
     score = -Inf;
     best_traj_set = [];
-    while score < 0
+    while score < 1 
         if greedy
             sol = greedySolution(network, params);
         else
             sol = randomSolution(params);
         end
         [traj_set, event_set] = constructTrajectorySet(network, sol, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
-        demand_score = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+        new_demand_score = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
         new_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
-        if score < new_score
+        if score < new_demand_score
             best_traj_set = traj_set;
-            score = new_score
+            score = new_demand_score
             csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
             csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
         end
