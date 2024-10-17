@@ -299,9 +299,17 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
 
     % Run Solver
 
-    [~,obj_val] = linprog(f, A, b, Aeq, beq, lb);
+    [x, obj_val] = linprog(f, A, b, Aeq, beq, lb);
 
     score = -obj_val / sum(demand_matrix,'all');
+
+    % Plotting
+    edge_traffic = zeros(n_edges, 1);
+    for i_edge = 1:n_edges
+        edge_traffic(i_edge) = sum(x(i_edge:n_demands:n_edges*n_demands));
+    end
+    colormap(winter);
+    plot(G, 'Layout', 'layered', 'Sources', [1:n_stations], 'Sinks', [n_nodes-n_stations+1:n_nodes], 'EdgeCData', edge_traffic, 'LineWidth', 2, 'MarkerSize', 5);
 end
 
 %% Helper Functions
