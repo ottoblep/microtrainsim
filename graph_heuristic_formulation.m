@@ -315,7 +315,7 @@ function g = constructTransferGraph(network, event_set, max_changeover_time, tra
     % Train route nodes [n_stations + 1 : n_stations+n_stops]
     % Demand sink nodes [n_stations + n_stops + 1 : 2 * n_stations + n_stops]
     %         | sources| routes|  sinks|
-    % sources |   0    |   A   |   0   |
+    % sources |   0    |   A   |   I   |
     % routes  |   0    |   B   |   C   |
     % sinks   |   0    |   0   |   0   |
     g = zeros(2 * n_stations + n_stops);
@@ -329,11 +329,14 @@ function g = constructTransferGraph(network, event_set, max_changeover_time, tra
 
         % Add train trips as edges (B)
         if i_stop > 1
-            if event_set(3, i_stop - 1) == event_set(3, i_stop)
-                g(n_stations+i_stop, n_stations + i_stop-1) = train_capacity;
+            if event_set(3, i_stop - 1) == event_set(3, i_stop) % same train
+                g(n_stations + i_stop - 1, n_stations + i_stop) = train_capacity;
             end
         end
     end
+
+    % Staying at station (I)
+    g(1:n_stations, n_stations + n_stops + 1:end) = eye(n_stations, n_stations);
 
     for i_station = 1:n_stations
         % Add station changeovers as edges (B)
