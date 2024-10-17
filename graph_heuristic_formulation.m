@@ -224,21 +224,17 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     %  no loops, directed, positive weights
 
     % Decision Variables:
-
     % - edge flows, real positive, per demand, per edge
     % - carried demand, real positive, per demand relation 
 
     % Objective:
-
     % - maximize sum of carried demand
     f = cat(1, zeros(n_edges * n_demands, 1), -1 * ones(n_demands, 1));
 
     % Constraints:
-
     % - vertex flow conservation constraint, equality, per demand relation, per node
 
     %  matrix size is demands * (edges+1) x demands * nodes =~ stations^4 * journeys^2
-
     %                           | Edge_flows D1 | Edge_flows D2 | carried demand | 
     % Demand 1          Sources |               |               | 1  0  | 
     %           Nodes   Stops   |      A        |       0       | -1 0  | 
@@ -290,17 +286,13 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     % Edges * Demands |   I             |   0     | <= A
     % Demands         |   0             |   I     | <= B
     A = eye(n_decision_vars);
-
     b = zeros(n_decision_vars, 1);
     b(1:n_edges*n_demands) = repmat(g(g_edge_idxs), n_demands, 1);
     b(end - n_demands + 1:end) = demand_matrix(~eye(size(demand_matrix)));
-
     lb = zeros(n_decision_vars, 1);
 
     % Run Solver
-
     [x, obj_val] = linprog(f, A, b, Aeq, beq, lb);
-
     score = -obj_val / sum(demand_matrix,'all');
 
     % Plotting
