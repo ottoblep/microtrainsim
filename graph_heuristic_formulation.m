@@ -260,8 +260,8 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
 
     % Copy flow constraints per demand
     k_demand = 1;
+    for j_demand_source = 1:n_stations
     for i_demand_destination = 1:n_stations
-        for j_demand_source = 1:n_stations
             if i_demand_destination ==  j_demand_source
                 continue
             end
@@ -269,14 +269,13 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
             % copy flow constraint matrix (A,B)
             Aeq((k_demand-1) * n_nodes + 1:k_demand * n_nodes, (k_demand-1) * n_edges + 1:k_demand * n_edges) = Aeq_single_flow;
             % carried demand source node
-            Aeq((k_demand-1) * n_nodes + j_demand_source, n_demands * n_edges + k_demand) = 1;
+            Aeq((k_demand-1) * n_nodes + j_demand_source, n_demands * n_edges + k_demand) = -1;
             % carried demand sink node
-            Aeq(k_demand * n_nodes - n_stations + i_demand_destination, n_demands * n_edges + k_demand) = -1;
+            Aeq(k_demand * n_nodes - n_stations + i_demand_destination, n_demands * n_edges + k_demand) = 1;
 
             k_demand = k_demand + 1;
         end
     end
-    clear Aeq_single_flow;
     % demand sources/sinks are balanced
     assert(all(sum(Aeq(:,n_demands * n_edges + 1:end)) == zeros(1, n_demands)));
 
@@ -289,9 +288,9 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     A = eye(n_decision_vars);
     b = zeros(n_decision_vars, 1);
     b(1:n_edges*n_demands) = repmat(g(g_edge_idxs), n_demands, 1);
-    b(end - n_demands + 1:end) = demand_matrix(~eye(size(demand_matrix)));
+    demands_transposed = transpose(demand_matrix);
+    b(end - n_demands + 1:end) = demands_transposed(~eye(size(demand_matrix)));
     lb = zeros(n_decision_vars, 1);
-
     % Run Solver
     [x, obj_val] = linprog(f, A, b, Aeq, beq, lb);
     score = -obj_val / sum(demand_matrix,'all');
