@@ -221,6 +221,7 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     n_decision_vars = (n_edges + 1)* n_demands;
 
     %% Splittable Multi-commodity maximum flow problem https://en.wikipedia.org/wiki/Multi-commodity_flow_problem
+    %  NP-Complete if discrete but polynomial if real
     %  no loops, directed, positive weights
 
     % Decision Variables:
@@ -236,12 +237,12 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
 
     %  matrix size is demands * (edges+1) x demands * nodes =~ stations^4 * journeys^2
     %                           | Edge_flows D1 | Edge_flows D2 | carried demand | 
-    % Demand 1          Sources |               |               | 1  0  | 
-    %           Nodes   Stops   |      A        |       0       | -1 0  | 
-    %                   Sinks   |               |               | 0  0  | =   0
-    % Demand 2          Sources |               |               | 0  1  | 
-    %           Nodes   Stops   |      0        |       B       | 0 -1  | 
-    %                   Sinks   |               |               | 0  0  | 
+    % Demand 1          Sources |               |               | -1  0  | 
+    %           Nodes   Stops   |      A        |       0       | 0 0  | 
+    %                   Sinks   |               |               | 1  0  | =   0
+    % Demand 2          Sources |               |               | 0  -1  | 
+    %           Nodes   Stops   |      0        |       B       | 0  0 | 
+    %                   Sinks   |               |               | 0  1  | 
     Aeq = zeros(n_demands * n_nodes,n_decision_vars);
     beq = zeros(n_demands * n_nodes, 1);
 
