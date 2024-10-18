@@ -25,9 +25,9 @@ params.min_separation = 100; % m
 params.max_speed = 1.11; % m/10s 200km/h
 params.max_accel = 46.27; % m/(10s)² 0-100kmh in 1m
 params.max_changeover_time = 1440; % 4hrs
-params.train_capacity = 10;
+params.train_capacity = 400; % 400 Passengers
 
-params.demand_matrix = rand(size(network.adjacency_matrix,1)) * 2 * params.train_capacity;
+params.demand_matrix = randi(1000, size(network.adjacency_matrix,1));
 params.demand_matrix(logical(eye(size(params.demand_matrix)))) = 0;
 %params.demand_matrix = [ 0 20;
 %                         0 0];
