@@ -415,7 +415,6 @@ function solution = greedySolution(network, params)
     traj_set(1,:,:) = constructTrajectory(network, solution, params.initial_positions(1,:), params.initial_speeds(1), params.max_accel, params.max_speed);
     i_train = 2;
     while i_train <= params.n_trains
-        disp(["Greedy Placement: ", mat2str(round(i_train/params.n_trains * 100)), "%"]);
         abort = 1;
         collision_score = -Inf;
         while collision_score < 0
@@ -453,7 +452,8 @@ function greedyRandomSearch(network, params)
         [traj_set, event_set] = constructTrajectorySet(network, greedySolution(network, params), params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
         [new_demand_score, new_transfer_graph_digraph, new_flow_solution] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
         if best_solution_set{2} < new_demand_score
-            best_solution_set = {traj_set new_demand_score new_transfer_graph_digraph new_flow_solution}
+            best_solution_set = {traj_set new_demand_score new_transfer_graph_digraph new_flow_solution};
+            disp(strcat("Best demand satisfaction: ", string(best_solution_set{2} * 100), "%"));
             csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
             csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
         end
