@@ -234,7 +234,8 @@ function [demand_score, transfer_graph_digraph, flow_solution] = demandSatisfact
     % Constraints:
     % - vertex flow conservation constraint, equality, per demand relation, per node
 
-    %  matrix size is demands * (edges+1) x demands * nodes =~ stations^4 * journeys^2
+    %  matrix size is demands approx stations^4 * journeys^2
+    %  sparse matrix contains 2 * (stations^2 - stations) * (journeys + 1) nonzero elements
     %                           | Edge_flows D1 | Edge_flows D2 | carried demand | 
     % Demand 1          Sources |               |               | -1  0  | 
     %           Nodes   Stops   |      A        |       0       | 0 0  | 
@@ -242,11 +243,11 @@ function [demand_score, transfer_graph_digraph, flow_solution] = demandSatisfact
     % Demand 2          Sources |               |               | 0  -1  | 
     %           Nodes   Stops   |      0        |       B       | 0  0 | 
     %                   Sinks   |               |               | 0  1  | 
-    Aeq = zeros(n_demands * n_nodes,n_decision_vars);
-    beq = zeros(n_demands * n_nodes, 1);
+    Aeq = sparse(n_demands * n_nodes,n_decision_vars);
+    beq = sparse(n_demands * n_nodes, 1);
 
     % General flow constraint template in the network (A)
-    Aeq_single_flow = zeros(n_nodes, n_edges);
+    Aeq_single_flow = sparse(n_nodes, n_edges);
     for i_node = 1:n_nodes
         out_edges_idxs = outedges(transfer_graph_digraph, i_node);
         in_edges_idxs = inedges(transfer_graph_digraph, i_node);
@@ -284,12 +285,12 @@ function [demand_score, transfer_graph_digraph, flow_solution] = demandSatisfact
     %                 | Edges * Demands | Demands |
     % Edges * Demands |   I             |   0     | <= A
     % Demands         |   0             |   I     | <= B
-    A = eye(n_decision_vars);
+    A = speye(n_decision_vars);
     b = zeros(n_decision_vars, 1);
     b(1:n_edges*n_demands) = repmat(transfer_graph(transfer_graph_edge_idxs), n_demands, 1);
     demands_transposed = transpose(demand_matrix);
     b(end - n_demands + 1:end) = demands_transposed(~eye(size(demand_matrix)));
-    lb = zeros(n_decision_vars, 1);
+    lb = sparse(n_decision_vars, 1);
     % Run Solver
     [flow_solution, obj_val, ~, output] = linprog(f, A, b, Aeq, beq, lb);
     demand_score = -obj_val / sum(demand_matrix,'all');
