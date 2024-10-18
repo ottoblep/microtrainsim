@@ -300,8 +300,9 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     for i_edge = 1:n_edges
         edge_traffic(i_edge) = sum(x(i_edge:n_edges:n_edges*n_demands));
     end
-    colormap(winter);
-    plot(G, 'Layout', 'layered', 'Sources', [1:n_stations], 'Sinks', [n_nodes-n_stations+1:n_nodes], 'EdgeCData', edge_traffic, 'LineWidth', 2, 'MarkerSize', 5);
+    heatmap = hot;
+    colormap(heatmap(1:end-80,:));
+    plot(G, 'Layout', 'layered', 'Sources', [1:n_stations], 'Sinks', [n_nodes-n_stations+1:n_nodes], 'EdgeCData', edge_traffic, 'LineWidth', 2.5, 'MarkerSize', 5);
     savefig("flow.fig");
 end
 
