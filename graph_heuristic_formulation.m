@@ -329,8 +329,8 @@ function transfer_graph = constructTransferGraph(network, event_set, max_changeo
     end
 
     % Staying at station (I)
-    transfer_graph(1:n_stations, n_stations + n_stops + 1:end) = eye(n_stations, n_stations) * Inf;
-    transfer_graph(isnan(transfer_graph)) = 0;
+    %transfer_graph(1:n_stations, n_stations + n_stops + 1:end) = eye(n_stations, n_stations) * Inf;
+    %transfer_graph(isnan(transfer_graph)) = 0;
 
     for i_station = 1:n_stations
         % Add station changeovers as edges (B)
