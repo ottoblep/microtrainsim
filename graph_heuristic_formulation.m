@@ -1,12 +1,9 @@
-%% Generate Network
-%network.adjacency_matrix = [ 0 500 200 0 500;
-%                            0 0 600 2000 1000;
-%                            0 0 0 400 0;
-%                            0 0 0 0 0;
-%                            0 0 0 0 0];
-adj = random_planar_graph(4);
+% Generate Network
+adj = random_planar_graph(10);
 network.adjacency_matrix = triu((adj + adj') * 1000, 1);
-connection_indexes = find(network.adjacency_matrix~=0);
+%network.adjacency_matrix = [ 0 100;
+%                             0 0 ];
+connection_indexes = find(network.adjacency_matrix);
 network.adjacency_matrix(connection_indexes) = network.adjacency_matrix(connection_indexes) .* (randi([1,3],size(connection_indexes)));
 clear adj connection_indexes;
 [network.edge_rows, network.edge_cols, network.edge_values] = find(network.adjacency_matrix);
@@ -23,7 +20,7 @@ clear tmp_adj;
 
 %% Parameters
 params.n_timesteps = 8640; % 10s timesteps for one whole day
-params.n_trains = 4;
+params.n_trains = 3;
 params.min_separation = 100; % m
 params.max_speed = 1.11; % m/10s 200km/h
 params.max_accel = 46.27; % m/(10s)² 0-100kmh in 1m
@@ -32,6 +29,8 @@ params.train_capacity = 10;
 
 params.demand_matrix = rand(size(network.adjacency_matrix,1)) * 2 * params.train_capacity;
 params.demand_matrix(logical(eye(size(params.demand_matrix)))) = 0;
+%params.demand_matrix = [ 0 20;
+%                         0 0];
 params.initial_positions = randi([1,length(network.edge_values)], params.n_trains, 3);
 params.initial_positions(:,2) = rand(params.n_trains,1);
 params.initial_positions(:,3) = randi([0,1],params.n_trains,1) * 2 - 1;
@@ -171,7 +170,7 @@ end
 
 %% Objective Evalutation
 
-function score = collisionPenalties(network, traj_set, min_separation, max_speed)
+function collision_score = collisionPenalties(network, traj_set, min_separation, max_speed)
     %% Evaluates a set of train trajectories
     % trajectory_set dimensions (n_trains, 3, timestep)
     % trajectory_set values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
@@ -200,21 +199,21 @@ function score = collisionPenalties(network, traj_set, min_separation, max_speed
         end
     end
 
-    score = -penalty;
+    collision_score = -penalty;
 end
 
-function score = demandSatisfaction(network, event_set, demand_matrix, max_changeover_time, train_capacity)
+function [demand_score, transfer_graph_digraph, flow_solution] = demandSatisfaction(network, event_set, demand_matrix, max_changeover_time, train_capacity)
     %% Evaluates satisfied demand for a given set of arrival/departure timesteps 
     % event_set dimenstions (3, n))
     % event_set values (presence_at_node, timestep, train)
     assert(all(size(demand_matrix) == size(network.adjacency_matrix)));
 
-    g = constructTransferGraph(network, event_set, max_changeover_time, train_capacity);
-    G = digraph(g);
-    g_edge_idxs = find(g);
+    transfer_graph = constructTransferGraph(network, event_set, max_changeover_time, train_capacity);
+    transfer_graph_digraph = digraph(transfer_graph);
+    transfer_graph_edge_idxs = find(transfer_graph);
 
-    n_nodes = size(g,1); % n_stations + n_stops + n_stations
-    n_edges = numel(g_edge_idxs);
+    n_nodes = size(transfer_graph,1); % n_stations + n_stops + n_stations
+    n_edges = numel(transfer_graph_edge_idxs);
     n_stations = size(network.adjacency_matrix,1);
     % Only nondiagonal entries in the demand matrix
     n_demands = n_stations^2 - n_stations;
@@ -249,8 +248,8 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     % General flow constraint template in the network (A)
     Aeq_single_flow = zeros(n_nodes, n_edges);
     for i_node = 1:n_nodes
-        out_edges_idxs = outedges(G, i_node);
-        in_edges_idxs = inedges(G, i_node);
+        out_edges_idxs = outedges(transfer_graph_digraph, i_node);
+        in_edges_idxs = inedges(transfer_graph_digraph, i_node);
         Aeq_single_flow(i_node, in_edges_idxs) = 1; % inflows 
         Aeq_single_flow(i_node, out_edges_idxs) = -1; % outflows 
     end
@@ -261,7 +260,7 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     % Copy flow constraints per demand
     k_demand = 1;
     for j_demand_source = 1:n_stations
-    for i_demand_destination = 1:n_stations
+        for i_demand_destination = 1:n_stations
             if i_demand_destination ==  j_demand_source
                 continue
             end
@@ -287,28 +286,19 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     % Demands         |   0             |   I     | <= B
     A = eye(n_decision_vars);
     b = zeros(n_decision_vars, 1);
-    b(1:n_edges*n_demands) = repmat(g(g_edge_idxs), n_demands, 1);
+    b(1:n_edges*n_demands) = repmat(transfer_graph(transfer_graph_edge_idxs), n_demands, 1);
     demands_transposed = transpose(demand_matrix);
     b(end - n_demands + 1:end) = demands_transposed(~eye(size(demand_matrix)));
     lb = zeros(n_decision_vars, 1);
     % Run Solver
-    [x,obj_val,~,output] = linprog(f, A, b, Aeq, beq, lb);
-    score = -obj_val / sum(demand_matrix,'all');
-
-    % Plotting
-    edge_traffic = zeros(n_edges, 1);
-    for i_edge = 1:n_edges
-        edge_traffic(i_edge) = sum(x(i_edge:n_edges:n_edges*n_demands));
-    end
-    heatmap = hot;
-    colormap(heatmap(1:end-80,:));
-    plot(G, 'Layout', 'layered', 'Sources', [1:n_stations], 'Sinks', [n_nodes-n_stations+1:n_nodes], 'EdgeCData', edge_traffic, 'LineWidth', 2.5, 'MarkerSize', 5);
-    savefig("flow.fig");
+    [flow_solution, obj_val, ~, output] = linprog(f, A, b, Aeq, beq, lb);
+    demand_score = -obj_val / sum(demand_matrix,'all');
+    %plotDemandFlow(network, transfer_graph_digraph, flow_solution);
 end
 
 %% Helper Functions
 
-function g = constructTransferGraph(network, event_set, max_changeover_time, train_capacity)
+function transfer_graph = constructTransferGraph(network, event_set, max_changeover_time, train_capacity)
     %% Construct a graph of possible passenger/freight movements using train arrivals/departures
     n_stations = size(network.adjacency_matrix,1);
     n_stops = size(event_set, 2);
@@ -320,26 +310,26 @@ function g = constructTransferGraph(network, event_set, max_changeover_time, tra
     % sources |   0    |   A   |   I   |
     % routes  |   0    |   B   |   C   |
     % sinks   |   0    |   0   |   0   |
-    g = zeros(2 * n_stations + n_stops);
+    transfer_graph = zeros(2 * n_stations + n_stops);
 
-    for i_stop = 1:n_stops
+    for i_stop = 1:n_stops 
         % Connect demand source (A)
-        g(event_set(1, i_stop), n_stations + i_stop) = Inf;
+        transfer_graph(event_set(1, i_stop), n_stations + i_stop) = Inf;
 
         % Connect demand sink (C)
-        g(n_stations + i_stop, n_stations + n_stops + event_set(1,i_stop)) = Inf;
+        transfer_graph(n_stations + i_stop, n_stations + n_stops + event_set(1,i_stop)) = Inf;
 
         % Add train trips as edges (B)
         if i_stop > 1
             if event_set(3, i_stop - 1) == event_set(3, i_stop) % same train
-                g(n_stations + i_stop - 1, n_stations + i_stop) = train_capacity;
+                transfer_graph(n_stations + i_stop - 1, n_stations + i_stop) = train_capacity;
             end
         end
     end
 
     % Staying at station (I)
-    g(1:n_stations, n_stations + n_stops + 1:end) = eye(n_stations, n_stations) * Inf;
-    g(isnan(g)) = 0;
+    transfer_graph(1:n_stations, n_stations + n_stops + 1:end) = eye(n_stations, n_stations) * Inf;
+    transfer_graph(isnan(transfer_graph)) = 0;
 
     for i_station = 1:n_stations
         % Add station changeovers as edges (B)
@@ -352,10 +342,29 @@ function g = constructTransferGraph(network, event_set, max_changeover_time, tra
 
         for i_idx_sorted_station_visits = 2:length(idx_sorted_station_visits)
             if event_set(2, idx_sorted_station_visits(i_idx_sorted_station_visits)) < event_set(2, idx_sorted_station_visits(i_idx_sorted_station_visits-1)) + max_changeover_time
-                g(n_stations + idx_sorted_station_visits(i_idx_sorted_station_visits-1), n_stations + idx_sorted_station_visits(i_idx_sorted_station_visits)) = Inf;
+                transfer_graph(n_stations + idx_sorted_station_visits(i_idx_sorted_station_visits-1), n_stations + idx_sorted_station_visits(i_idx_sorted_station_visits)) = Inf;
             end
         end
+    end 
+    % Connect demand sink (C)
+    transfer_graph(n_stations + i_stop, n_stations + n_stops + event_set(1,i_stop)) = Inf;
+end
+
+function plotDemandFlow(network, transfer_graph_digraph, flow_solution)
+    n_nodes = transfer_graph_digraph.numnodes;
+    n_edges = transfer_graph_digraph.numedges;
+    n_stations = size(network.adjacency_matrix,1);
+    n_demands = n_stations^2 - n_stations;
+
+    edge_traffic = zeros(n_edges, 1);
+    for i_edge = 1:n_edges
+        edge_traffic(i_edge) = sum(flow_solution(i_edge:n_edges:end-n_demands));
     end
+
+    figure();
+    heatmap = hot;
+    colormap(heatmap(1:end-80,:));
+    plot(transfer_graph_digraph, 'Layout', 'layered', 'Sources', [1:n_stations], 'Sinks', [n_nodes-n_stations+1:n_nodes], 'EdgeCData', edge_traffic, 'LineWidth', 2.5, 'MarkerSize', 5);
 end
 
 function distance = trainDistance(network, traj_set, i_train, j_train, timestep)
@@ -406,13 +415,13 @@ function solution = greedySolution(network, params)
     while i_train <= params.n_trains
         disp(["Greedy Placement: ", mat2str(round(i_train/params.n_trains * 100)), "%"]);
         abort = 1;
-        score = -Inf;
-        while score < 0
+        collision_score = -Inf;
+        while collision_score < 0
             new_train_solution = rand(1, params.n_timesteps * 2);
             new_traj = constructTrajectory(network, new_train_solution, params.initial_positions(i_train,:), params.initial_speeds(i_train), params.max_accel, params.max_speed);
             new_traj_set = cat(1, traj_set, reshape(new_traj, 1, size(new_traj,1), size(new_traj,2)));
             new_solution = cat(1, solution, new_train_solution);
-            score = collisionPenalties(network, new_traj_set, params.min_separation, params.max_speed);
+            collision_score = collisionPenalties(network, new_traj_set, params.min_separation, params.max_speed);
 
             abort = abort + 1;
             if abort > 1000
@@ -432,59 +441,24 @@ end
 
 %% Search Methods
 
-function randomSearch(network, params, greedy)
+function greedyRandomSearch(network, params)
+    %% Generate a random collision free solution then evaluate demand score
     csvwrite("network.csv", network.adjacency_matrix);
     csvwrite("demands.csv", params.demand_matrix);
-    score = -Inf;
-    best_traj_set = [];
-    while score < 1 
-        if greedy
-            sol = greedySolution(network, params);
-        else
-            sol = randomSolution(params);
-        end
-        [traj_set, event_set] = constructTrajectorySet(network, sol, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
-        new_demand_score = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
-        new_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
-        if score < new_demand_score
-            best_traj_set = traj_set;
-            score = new_demand_score
+    abort = 0;
+    best_solution_set = {0 -Inf 0 0}; % traj_set, demand_score, transfer_graph_digraph, flow_solution
+    while best_solution_set{2} < 1 && abort < 100
+        [traj_set, event_set] = constructTrajectorySet(network, greedySolution(network, params), params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
+        [new_demand_score, new_transfer_graph_digraph, new_flow_solution] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+        if best_solution_set{2} < new_demand_score
+            best_solution_set = {traj_set new_demand_score new_transfer_graph_digraph new_flow_solution}
             csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
             csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
+            abort = 0;
         end
+        abort = abort + 1;
     end
+    plotDemandFlow(network, best_solution_set{3}, best_solution_set{4});
 end
 
-function localSearch(network, params)
-    csvwrite("network.csv", network.adjacency_matrix);
-    global_score = -Inf;
-
-    for restart = 1:100
-        improvement = Inf; 
-        abort = 0;
-        solution = randomSolution(params);
-        score = collisionPenalties(network, constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed), params.min_separation, params.max_speed);
-
-        while improvement > 100 && abort < 100
-            preturbed_solution = solution + (rand(params.n_trains, params.n_timesteps * 2) - 0.5);
-            preturbed_solution(preturbed_solution > 1) = 1;
-            preturbed_solution(preturbed_solution < 0) = 0;
-            traj_set = constructTrajectorySet(network, preturbed_solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
-            new_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
-
-            if new_score > score
-                if new_score > global_score
-                    csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
-                    csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
-                    global_score = new_score
-                end
-                solution = preturbed_solution;
-                abort = 0;
-                improvement = new_score - score;
-            end
-            abort = abort + 1;
-        end
-    end
-end
-
-randomSearch(network, params, 1);
+greedyRandomSearch(network, params);
