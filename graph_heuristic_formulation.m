@@ -446,18 +446,19 @@ function greedyRandomSearch(network, params)
     %% Generate a random collision free solution then evaluate demand score
     csvwrite("network.csv", network.adjacency_matrix);
     csvwrite("demands.csv", params.demand_matrix);
-    abort = 0;
+    tic;
     best_solution_set = {0 -Inf 0 0}; % traj_set, demand_score, transfer_graph_digraph, flow_solution
-    while best_solution_set{2} < 1 && abort < 100
+    while best_solution_set{2} < 1
         [traj_set, event_set] = constructTrajectorySet(network, greedySolution(network, params), params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
         [new_demand_score, new_transfer_graph_digraph, new_flow_solution] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
         if best_solution_set{2} < new_demand_score
             best_solution_set = {traj_set new_demand_score new_transfer_graph_digraph new_flow_solution}
             csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
             csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
-            abort = 0;
         end
-        abort = abort + 1;
+        if toc > 30
+            break;
+        end
     end
     plotDemandFlow(network, best_solution_set{3}, best_solution_set{4});
 end
