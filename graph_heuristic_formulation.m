@@ -30,7 +30,7 @@ params.max_accel = 46.27; % m/(10s)² 0-100kmh in 1m
 params.max_changeover_time = 1440; % 4hrs
 params.train_capacity = 10;
 
-params.demand_matrix = rand(size(network.adjacency_matrix,1)) * 100;
+params.demand_matrix = rand(size(network.adjacency_matrix,1)) * 2 * params.train_capacity;
 params.demand_matrix(logical(eye(size(params.demand_matrix)))) = 0;
 params.initial_positions = randi([1,length(network.edge_values)], params.n_trains, 3);
 params.initial_positions(:,2) = rand(params.n_trains,1);
@@ -269,15 +269,15 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
             % copy flow constraint matrix (A,B)
             Aeq((k_demand-1) * n_nodes + 1:k_demand * n_nodes, (k_demand-1) * n_edges + 1:k_demand * n_edges) = Aeq_single_flow;
             % carried demand source node
-            Aeq((k_demand-1) * n_nodes + j_demand_source, n_demands * n_edges + k_demand) = -1;
+            Aeq((k_demand-1) * n_nodes + j_demand_source, n_demands * n_edges + k_demand) = 1;
             % carried demand sink node
-            Aeq(k_demand * n_nodes - n_stations + i_demand_destination, n_demands * n_edges + k_demand) = 1;
+            Aeq(k_demand * n_nodes - n_stations + i_demand_destination, n_demands * n_edges + k_demand) = -1;
 
             k_demand = k_demand + 1;
         end
     end
-    % demand sources/sinks are balanced
-    assert(all(sum(Aeq(:,n_demands * n_edges + 1:end)) == zeros(1, n_demands)));
+    % column sum is always zero 
+    assert(all(sum(Aeq) == zeros(1, size(Aeq,2))));
 
     % - edge capacity constraint, inequality, per edge
     % - available demand constraint, inequality, per demand
@@ -292,16 +292,17 @@ function score = demandSatisfaction(network, event_set, demand_matrix, max_chang
     b(end - n_demands + 1:end) = demands_transposed(~eye(size(demand_matrix)));
     lb = zeros(n_decision_vars, 1);
     % Run Solver
-    [x, obj_val] = linprog(f, A, b, Aeq, beq, lb);
+    [x,obj_val,~,output] = linprog(f, A, b, Aeq, beq, lb);
     score = -obj_val / sum(demand_matrix,'all');
 
     % Plotting
     edge_traffic = zeros(n_edges, 1);
     for i_edge = 1:n_edges
-        edge_traffic(i_edge) = sum(x(i_edge:n_demands:n_edges*n_demands));
+        edge_traffic(i_edge) = sum(x(i_edge:n_edges:n_edges*n_demands));
     end
     colormap(winter);
     plot(G, 'Layout', 'layered', 'Sources', [1:n_stations], 'Sinks', [n_nodes-n_stations+1:n_nodes], 'EdgeCData', edge_traffic, 'LineWidth', 2, 'MarkerSize', 5);
+    savefig("flow.fig");
 end
 
 %% Helper Functions
@@ -336,7 +337,8 @@ function g = constructTransferGraph(network, event_set, max_changeover_time, tra
     end
 
     % Staying at station (I)
-    g(1:n_stations, n_stations + n_stops + 1:end) = eye(n_stations, n_stations);
+    g(1:n_stations, n_stations + n_stops + 1:end) = eye(n_stations, n_stations) * Inf;
+    g(isnan(g)) = 0;
 
     for i_station = 1:n_stations
         % Add station changeovers as edges (B)
