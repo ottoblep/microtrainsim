@@ -291,10 +291,11 @@ function [demand_score, transfer_graph_digraph, flow_solution] = demandSatisfact
     demands_transposed = transpose(demand_matrix);
     b(end - n_demands + 1:end) = demands_transposed(~eye(size(demand_matrix)));
     lb = sparse(n_decision_vars, 1);
+    options = optimoptions('linprog','Display','none');
     % Run Solver
-    [flow_solution, obj_val, ~, output] = linprog(f, A, b, Aeq, beq, lb);
+    [flow_solution, obj_val, ~, output] = linprog(f, A, b, Aeq, beq, lb, [], options);
     demand_score = -obj_val / sum(demand_matrix,'all');
-    %plotDemandFlow(network, transfer_graph_digraph, flow_solution);
+    % plotDemandFlow(network, transfer_graph_digraph, flow_solution);
 end
 
 %% Helper Functions
