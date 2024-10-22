@@ -1,4 +1,4 @@
-% Generate Network
+%% Generate Network
 adj = random_planar_graph(10);
 network.adjacency_matrix = triu((adj + adj') * 1000, 1);
 %network.adjacency_matrix = [ 0 100;
@@ -298,6 +298,14 @@ function [demand_score, transfer_graph_digraph, flow_solution] = demandSatisfact
     % plotDemandFlow(network, transfer_graph_digraph, flow_solution);
 end
 
+function combined_score = combinedObjective(network, params, solution)
+    solution = reshape(solution, params.n_trains, params.n_timesteps * 2);
+    [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed);
+    collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
+    [demand_score, transfer_graph_digraph, flow_solution] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+    combined_score = collision_score + demand_score;
+end
+
 %% Helper Functions
 
 function transfer_graph = constructTransferGraph(network, event_set, max_changeover_time, train_capacity)
@@ -464,4 +472,15 @@ function greedyRandomSearch(network, params)
     plotDemandFlow(network, best_solution_set{3}, best_solution_set{4});
 end
 
-greedyRandomSearch(network, params);
+function geneticGlobalSearch(network, params)
+    %% Run genetic algorithm globally over collision and demand objective
+    csvwrite("network.csv", network.adjacency_matrix);
+    csvwrite("demands.csv", params.demand_matrix);
+    nvars = params.n_trains * params.n_timesteps * 2;
+    obj_fun = @(solution) -combinedObjective(network, params, solution);
+    options = optimoptions('ga','Display','iter', 'UseParallel', true, 'MaxStallGenerations', 25, 'PopulationSize', 10);
+    [X, fval, exitflag, output, population, scores] = ga(obj_fun, nvars, [], [], [], [], zeros(nvars, 1), ones(nvars, 1), [], options);
+end
+
+%greedyRandomSearch(network, params);
+geneticGlobalSearch(network, params);
