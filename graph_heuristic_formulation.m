@@ -1,5 +1,5 @@
 %% Generate Network
-adj = random_planar_graph(10);
+adj = random_planar_graph(30);
 network.adjacency_matrix = triu((adj + adj') * 1000, 1);
 %network.adjacency_matrix = [ 0 100;
 %                             0 0 ];
@@ -320,7 +320,7 @@ function collision_score = collisionPenalties(network, traj_set, min_separation,
     collision_score = -penalty;
 end
 
-function [demand_score, transfer_graph_digraph, flow_solution] = demandSatisfaction(network, event_set, demand_matrix, max_changeover_time, train_capacity)
+function [demand_score, transfer_graph_digraph, edge_flows] = demandSatisfaction(network, event_set, demand_matrix, max_changeover_time, train_capacity)
     %% Evaluates satisfied demand for a given set of arrival/departure timesteps 
     % event_set dimenstions (3, n))
     % event_set values (presence_at_node, timestep, train)
@@ -328,92 +328,10 @@ function [demand_score, transfer_graph_digraph, flow_solution] = demandSatisfact
 
     transfer_graph = constructTransferGraph(network, event_set, max_changeover_time, train_capacity);
     transfer_graph_digraph = digraph(transfer_graph);
-    transfer_graph_edge_idxs = find(transfer_graph);
+    [flow_value, edge_flows] = maxMulticommodityFlowLP(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix);
+    % [flow_value, edge_flows] = maxMulticommodityFlowApprox(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix);
+    demand_score = -flow_value / sum(demand_matrix,'all');
 
-    n_nodes = size(transfer_graph,1); % n_stations + n_stops + n_stations
-    n_edges = numel(transfer_graph_edge_idxs);
-    n_stations = size(network.adjacency_matrix,1);
-    % Only nondiagonal entries in the demand matrix
-    n_demands = n_stations^2 - n_stations;
-    n_decision_vars = (n_edges + 1)* n_demands;
-
-    %% Splittable Multi-commodity maximum flow problem https://en.wikipedia.org/wiki/Multi-commodity_flow_problem
-    %  NP-Complete if discrete but polynomial if real
-    %  no loops, directed, positive weights
-
-    % Decision Variables:
-    % - edge flows, real positive, per demand, per edge
-    % - carried demand, real positive, per demand relation 
-
-    % Objective:
-    % - maximize sum of carried demand
-    f = cat(1, zeros(n_edges * n_demands, 1), -1 * ones(n_demands, 1));
-
-    % Constraints:
-    % - vertex flow conservation constraint, equality, per demand relation, per node
-
-    %  matrix size is demands approx stations^4 * journeys^2
-    %  sparse matrix contains 2 * (stations^2 - stations) * (journeys + 1) nonzero elements
-    %                           | Edge_flows D1 | Edge_flows D2 | carried demand | 
-    % Demand 1          Sources |               |               | -1  0  | 
-    %           Nodes   Stops   |      A        |       0       | 0 0  | 
-    %                   Sinks   |               |               | 1  0  | =   0
-    % Demand 2          Sources |               |               | 0  -1  | 
-    %           Nodes   Stops   |      0        |       B       | 0  0 | 
-    %                   Sinks   |               |               | 0  1  | 
-    Aeq = sparse(n_demands * n_nodes,n_decision_vars);
-    beq = sparse(n_demands * n_nodes, 1);
-
-    % General flow constraint template in the network (A)
-    Aeq_single_flow = sparse(n_nodes, n_edges);
-    for i_node = 1:n_nodes
-        out_edges_idxs = outedges(transfer_graph_digraph, i_node);
-        in_edges_idxs = inedges(transfer_graph_digraph, i_node);
-        Aeq_single_flow(i_node, in_edges_idxs) = 1; % inflows 
-        Aeq_single_flow(i_node, out_edges_idxs) = -1; % outflows 
-    end
-    % source and sink nodes
-    assert(all(all(Aeq_single_flow(1:n_stations, :) <= 0)));
-    assert(all(all(Aeq_single_flow(end - n_stations + 1:end, :) >= 0)));
-
-    % Copy flow constraints per demand
-    k_demand = 1;
-    for j_demand_source = 1:n_stations
-        for i_demand_destination = 1:n_stations
-            if i_demand_destination ==  j_demand_source
-                continue
-            end
-
-            % copy flow constraint matrix (A,B)
-            Aeq((k_demand-1) * n_nodes + 1:k_demand * n_nodes, (k_demand-1) * n_edges + 1:k_demand * n_edges) = Aeq_single_flow;
-            % carried demand source node
-            Aeq((k_demand-1) * n_nodes + j_demand_source, n_demands * n_edges + k_demand) = 1;
-            % carried demand sink node
-            Aeq(k_demand * n_nodes - n_stations + i_demand_destination, n_demands * n_edges + k_demand) = -1;
-
-            k_demand = k_demand + 1;
-        end
-    end
-    % column sum is always zero 
-    assert(all(sum(Aeq) == zeros(1, size(Aeq,2))));
-
-    % - edge capacity constraint, inequality, per edge
-    % - available demand constraint, inequality, per demand
-
-    %                 | Edges * Demands | Demands |
-    % Edges * Demands |   I             |   0     | <= A
-    % Demands         |   0             |   I     | <= B
-    A = speye(n_decision_vars);
-    b = zeros(n_decision_vars, 1);
-    b(1:n_edges*n_demands) = repmat(transfer_graph(transfer_graph_edge_idxs), n_demands, 1);
-    demands_transposed = transpose(demand_matrix);
-    b(end - n_demands + 1:end) = demands_transposed(~eye(size(demand_matrix)));
-    lb = sparse(n_decision_vars, 1);
-    options = optimoptions('linprog','Display','none');
-    % Run Solver
-    [flow_solution, obj_val, ~, output] = linprog(f, A, b, Aeq, beq, lb, [], options);
-    demand_score = -obj_val / sum(demand_matrix,'all');
-    % plotDemandFlow(network, transfer_graph_digraph, flow_solution);
 end
 
 function combined_score = geneticObjective(network, params, solution)
@@ -490,7 +408,7 @@ function geneticGlobalSearch(network, params)
     csvwrite("demands.csv", params.demand_matrix);
     nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
     obj_fun = @(solution) -geneticObjective(network, params, solution);
-    options = optimoptions('ga','Display','iter', 'UseParallel', true, 'MaxStallGenerations', 25, 'PopulationSize', 10);
+    options = optimoptions('ga','Display','iter', 'UseParallel', false, 'MaxStallGenerations', 25, 'PopulationSize', 10);
     [X, fval, exitflag, output, population, scores] = ga(obj_fun, nvars, [], [], [], [], zeros(nvars, 1), ones(nvars, 1), [], options);
     % Save result
     solution = reshape(X, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor);
@@ -499,5 +417,5 @@ function geneticGlobalSearch(network, params)
     csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
 end
 
-greedyRandomSearch(network, params);
+%greedyRandomSearch(network, params);
 geneticGlobalSearch(network, params);

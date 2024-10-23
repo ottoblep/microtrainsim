@@ -1,16 +1,13 @@
 %% Max-concurrent Multicommodity Network Flow algorithm from "Approximating fractional multicommodity flow independent of the number of commodities" (Fleischer 2000)
 % This implementation is adapted to a directed graph without loops and and and identical number of source and sink nodes
-function result = approxMaxMulticommodityFlow(network, n_source_sink_nodes, demands, e_accuracy)
+function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network_digraph, n_source_sink_nodes, demand_matrix, e_accuracy)
      % network is the directed adjacency matrix
-     % demands consist only of the serialized row-order upper triangular of a n_source_sink_nodes^2 matrix
+     % demands is the serialized row-order upper triangular of a n_source_sink_nodes^2 demand matrix
      % e_accuracy is the epsilon in (1+epsilon)
 
-     g_network = digraph(network);
      [~, ~, edge_capacities] = find(network);
-
      n_nodes = size(network,1);
      m_edges = numel(edge_capacities);
-     n_source_sink_nodes = 3;
      k_demand_pairs = n_source_sink_nodes^2 - n_source_sink_nodes;
      demand_pair_idxs = combinations(1:n_source_sink_nodes, n_nodes-n_source_sink_nodes+1:n_nodes);
      % Remove diagonal
@@ -18,7 +15,7 @@ function result = approxMaxMulticommodityFlow(network, n_source_sink_nodes, dema
 
      demand_paths = cell(k_demand_pairs, 1);
      for i_demand_pair = 1:k_demand_pairs
-          [~, demand_paths{i_demand_pair}] = allpaths(g_network, demand_pair_idxs(i_demand_pair, 1), demand_pair_idxs(i_demand_pair, 2));
+          [~, demand_paths{i_demand_pair}] = allpaths(network_digraph, demand_pair_idxs(i_demand_pair, 1), demand_pair_idxs(i_demand_pair, 2));
      end
      n_demand_path_sizes = cellfun('size', demand_paths, 1);
      n_demand_paths = sum(n_demand_path_sizes);
@@ -67,6 +64,21 @@ function result = approxMaxMulticommodityFlow(network, n_source_sink_nodes, dema
 
      % Scale result
      result = x / (log((1 + e_accuracy)/delta) / log(1 + e_accuracy));
+     flow_value = sum(result);
+
+     % Sum edge flows
+     edge_flows = zeros(m_edges, 1);
+     for j_demand_pair = 1:k_demand_pairs
+          paths = demand_paths{j_demand_pair};
+          for i_path = 1:numel(paths)
+               P = paths{i_path,1};
+               global_path_idx = P_idx + sum(n_demand_path_sizes(1:i_path-1));
+               for i_path_edge = 1:numel(P)
+                    global_edge_idx = P(i_path_edge);
+                    edge_flows(global_edge_idx) = edge_flows(global_edge_idx) + result(global_path_idx);
+               end
+          end
+     end
 end
 
 function [shortest_path_idx, best_length] = weightedShortestPath(paths, edge_weights)
