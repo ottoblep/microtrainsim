@@ -235,21 +235,16 @@ function transfer_graph = constructTransferGraph(network, event_set, max_changeo
     transfer_graph(n_stations + i_stop, n_stations + n_stops + event_set(1,i_stop)) = Inf;
 end
 
-function plotDemandFlow(network, transfer_graph_digraph, flow_solution)
+function plotDemandFlow(network, transfer_graph_digraph, edge_flows)
     n_nodes = transfer_graph_digraph.numnodes;
     n_edges = transfer_graph_digraph.numedges;
     n_stations = size(network.adjacency_matrix,1);
     n_demands = n_stations^2 - n_stations;
 
-    edge_traffic = zeros(n_edges, 1);
-    for i_edge = 1:n_edges
-        edge_traffic(i_edge) = sum(flow_solution(i_edge:n_edges:end-n_demands));
-    end
-
     figure();
     heatmap = hot;
     colormap(heatmap(1:end-80,:));
-    plot(transfer_graph_digraph, 'Layout', 'layered', 'Sources', [1:n_stations], 'Sinks', [n_nodes-n_stations+1:n_nodes], 'EdgeCData', edge_traffic, 'LineWidth', 2.5, 'MarkerSize', 5);
+    plot(transfer_graph_digraph, 'Layout', 'layered', 'Sources', [1:n_stations], 'Sinks', [n_nodes-n_stations+1:n_nodes], 'EdgeCData', edge_flows, 'LineWidth', 2.5, 'MarkerSize', 5);
 end
 
 function distance = trainDistance(network, traj_set, i_train, j_train, timestep)
@@ -328,10 +323,9 @@ function [demand_score, transfer_graph_digraph, edge_flows] = demandSatisfaction
 
     transfer_graph = constructTransferGraph(network, event_set, max_changeover_time, train_capacity);
     transfer_graph_digraph = digraph(transfer_graph);
-    [flow_value, edge_flows] = maxMulticommodityFlowLP(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix);
-    % [flow_value, edge_flows] = maxMulticommodityFlowApprox(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix);
-    demand_score = -flow_value / sum(demand_matrix,'all');
-
+    %[flow_value, edge_flows] = maxMulticommodityFlowLP(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix);
+    [flow_value, edge_flows] = maxMulticommodityFlowApprox(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix, 0.01);
+    demand_score = flow_value / sum(demand_matrix,'all');
 end
 
 function combined_score = geneticObjective(network, params, solution)
@@ -380,22 +374,22 @@ end
 
 %% Search Methods
 
-function greedyRandomSearch(network, params)
+function greedyRandomSearch(network, params, max_time)
     %% Generate a random collision free solution then evaluate demand score
     csvwrite("network.csv", network.adjacency_matrix);
     csvwrite("demands.csv", params.demand_matrix);
     tic;
-    best_solution_set = {0 -Inf 0 0}; % traj_set, demand_score, transfer_graph_digraph, flow_solution
+    best_solution_set = {[] -Inf [] []}; % traj_set, demand_score, transfer_graph_digraph, edge_flows
     while best_solution_set{2} < 1
         [traj_set, event_set] = constructTrajectorySet(network, greedySolution(network, params), params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
-        [new_demand_score, new_transfer_graph_digraph, new_flow_solution] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+        [new_demand_score, new_transfer_graph_digraph, new_edge_flows] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
         if best_solution_set{2} < new_demand_score
-            best_solution_set = {traj_set new_demand_score new_transfer_graph_digraph new_flow_solution};
+            best_solution_set = {traj_set new_demand_score new_transfer_graph_digraph new_edge_flows};
             disp(strcat("Best demand satisfaction: ", string(best_solution_set{2} * 100), "%"));
             csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
             csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
         end
-        if toc > 30
+        if toc > max_time
             break;
         end
     end
@@ -417,5 +411,5 @@ function geneticGlobalSearch(network, params)
     csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
 end
 
-%greedyRandomSearch(network, params);
-geneticGlobalSearch(network, params);
+greedyRandomSearch(network, params, 10);
+%geneticGlobalSearch(network, params);

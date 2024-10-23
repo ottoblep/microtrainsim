@@ -1,12 +1,11 @@
 %% Link-Flow Model Linear Programming Formulation of the Multicommodity Flow Problem
 % This implementation is adapted to a directed graph without loops and and and identical number of source and sink nodes
-function [flow_value, edge_flows] = maxMulticommodityFlowLP(network, network_digraph, demand_matrix)
+function [flow_value, edge_flows] = maxMulticommodityFlowLP(network, network_digraph, n_stations, demand_matrix)
     % network is the directed adjacency matrix
 
     network_edge_idxs = find(network);
     n_nodes = size(network,1); % n_stations + n_stops + n_stations
     n_edges = numel(network_edge_idxs);
-    n_stations = n_nodes - 2*size(demand_matrix,1);
     % Only nondiagonal entries in the demand matrix
     n_demands = n_stations^2 - n_stations;
     n_decision_vars = (n_edges + 1)* n_demands;
@@ -87,5 +86,12 @@ function [flow_value, edge_flows] = maxMulticommodityFlowLP(network, network_dig
     lb = sparse(n_decision_vars, 1);
     options = optimoptions('linprog','Display','none');
     % Run Solver
-    [edge_flows, flow_value, ~, output] = linprog(f, A, b, Aeq, beq, lb, [], options);
+    [flow_solution, obj_val, ~, output] = linprog(f, A, b, Aeq, beq, lb, [], options);
+
+    edge_flows = zeros(n_edges, 1);
+    for i_edge = 1:n_edges
+        edge_flows(i_edge) = sum(flow_solution(i_edge:n_edges:end-n_demands));
+    end
+
+    flow_value = -obj_val;
 end
