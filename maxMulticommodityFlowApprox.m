@@ -1,4 +1,4 @@
-%% Max-concurrent Multicommodity Network Flow algorithm from "Approximating fractional multicommodity flow independent of the number of commodities" (Fleischer 2000)
+%% Max Multicommodity Network Flow algorithm from "Approximating fractional multicommodity flow independent of the number of commodities" (Fleischer 2000)
 % This implementation is adapted to a directed graph without loops and and and identical number of source and sink nodes
 function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network_digraph, n_source_sink_nodes, demand_matrix, e_accuracy)
      % network is the directed adjacency matrix
@@ -22,43 +22,40 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
      n_demand_path_sizes = cellfun('size', demand_paths, 1);
      n_demand_paths = sum(n_demand_path_sizes);
 
+     % L maximum number of arcs in augmenting path
+     L = max(n_demand_path_sizes);
+
      % delta is initial dual problem path length
-     delta = (m_edges / (1 - e_accuracy))^(-1/e_accuracy);
-     
+     delta = (1 + e_accuracy) / ((1 + e_accuracy) * L)^(1/e_accuracy);
+
      % Initialize decision vars for primal and dual problem
      x = zeros(1, n_demand_paths);
-     l = delta ./ edge_capacities;
-     
-     % Dual objective function D(l) = sum(u(e)l(e))
-     D_l = @(l_arg) sum(edge_capacities.*l_arg');
-     demand_remaining = zeros(1,k_demand_pairs);
-     
-     while D_l(l) < 1
+     l = ones(1, m_edges) * delta;
+
+     n_phases = 0;
+     for i = 1:log(((1+e_accuracy)/delta)) / log(1+e_accuracy)
+          n_phases = n_phases + 1;
           for j = 1:k_demand_pairs
-               demand_remaining(j) = demands(j);
-               while D_l(l) < 1 & demand_remaining(j) > 0
-                    % Shortest path in P_j using l
-                    relevant_paths = demand_paths{j};
-                    P_idx = weightedShortestPath(relevant_paths, l);
-                    if P_idx == 0
-                         break;
-                    end
-                    P = relevant_paths{P_idx,1};
-               
-                    smallest_capacity_in_p = min(edge_capacities(P));
-                    demand_to_assign_u = min([demand_remaining(j) smallest_capacity_in_p]);
-               
-                    demand_remaining(j) = demand_remaining(j) - demand_to_assign_u;
-               
+               relevant_paths = demand_paths{j};
+               [P_idx, P_len] = weightedShortestPath(relevant_paths, l);
+               if P_idx == 0
+                    continue;
+               end
+               P = relevant_paths{P_idx,1};
+
+               while P_len < min([1 delta*(1+e_accuracy)^i])
+                    demand_to_assign_u = min(edge_capacities(P));
+
                     global_path_idx = P_idx + sum(n_demand_path_sizes(1:j-1));
-               
-                    % Assign demand
                     x(global_path_idx) = x(global_path_idx) + demand_to_assign_u;
-               
+
                     for i_path_edge = 1:numel(P)
                          global_edge_idx = P(i_path_edge);
                          l(global_edge_idx) = l(global_edge_idx) * (1 + (demand_to_assign_u * e_accuracy) / edge_capacities(global_edge_idx));
                     end
+
+                    [P_idx, P_len] = weightedShortestPath(relevant_paths, l);
+                    P = relevant_paths{P_idx,1};
                end
           end
      end
@@ -85,7 +82,7 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
      end
 end
 
-function shortest_path_idx = weightedShortestPath(paths, edge_weights)
+function [shortest_path_idx best_length] = weightedShortestPath(paths, edge_weights)
      best_length = Inf;
      shortest_path_idx = 0;
      if isempty(paths)
