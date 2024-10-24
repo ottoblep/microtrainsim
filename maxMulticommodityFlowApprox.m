@@ -71,9 +71,12 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
      edge_flows = zeros(m_edges, 1);
      for j_demand_pair = 1:k_demand_pairs
           paths = demand_paths{j_demand_pair};
+          if isempty(paths)
+               continue
+          end
           for i_path = 1:numel(paths)
                P = paths{i_path,1};
-               global_path_idx = i_path + sum(n_demand_path_sizes(1:i_path-1));
+               global_path_idx = i_path + sum(n_demand_path_sizes(1:j_demand_pair-1));
                for i_path_edge = 1:numel(P)
                     global_edge_idx = P(i_path_edge);
                     edge_flows(global_edge_idx) = edge_flows(global_edge_idx) + result(global_path_idx);
