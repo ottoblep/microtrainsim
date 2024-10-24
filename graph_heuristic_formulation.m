@@ -235,18 +235,6 @@ function transfer_graph = constructTransferGraph(network, event_set, max_changeo
     transfer_graph(n_stations + i_stop, n_stations + n_stops + event_set(1,i_stop)) = Inf;
 end
 
-function plotDemandFlow(network, transfer_graph_digraph, edge_flows)
-    n_nodes = transfer_graph_digraph.numnodes;
-    n_edges = transfer_graph_digraph.numedges;
-    n_stations = size(network.adjacency_matrix,1);
-    n_demands = n_stations^2 - n_stations;
-
-    figure();
-    heatmap = hot;
-    colormap(heatmap(1:end-80,:));
-    plot(transfer_graph_digraph, 'Layout', 'layered', 'Sources', [1:n_stations], 'Sinks', [n_nodes-n_stations+1:n_nodes], 'EdgeCData', edge_flows, 'LineWidth', 2.5, 'MarkerSize', 5);
-end
-
 function distance = trainDistance(network, traj_set, i_train, j_train, timestep)
     %% Calculates distance of two trains given a set of trajectories
     % trajectory_set dimensions (n_trains, 3, timestep)
@@ -393,7 +381,7 @@ function greedyRandomSearch(network, params, max_time)
             break;
         end
     end
-    plotDemandFlow(network, best_solution_set{3}, best_solution_set{4});
+    plotDemandFlow(best_solution_set{3}, size(network.adjacency_matrix,1), best_solution_set{4});
 end
 
 function geneticGlobalSearch(network, params)

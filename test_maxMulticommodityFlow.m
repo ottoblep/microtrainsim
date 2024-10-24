@@ -12,7 +12,8 @@ demand_matrix = [0 10 0;
                   7  0 0;
                   3 15 0;];
 
-e_accuracy = 0.01;
+e_accuracy = 0.004;
 
-[flow_value1, edge_flows1] = maxMulticommodityFlowApprox(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix, e_accuracy);%
-[flow_value2, edge_flows2] = maxMulticommodityFlowLP(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix);
+[flow_value1, edge_flows1] = maxMulticommodityFlowApprox(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix, e_accuracy);
+%[flow_value2, edge_flows2] = maxMulticommodityFlowLP(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix);
+plotDemandFlow(transfer_graph_digraph, size(demand_matrix,1), edge_flows1);
