@@ -1,23 +1,54 @@
 %% Max Multicommodity Network Flow algorithm from "Approximating fractional multicommodity flow independent of the number of commodities" (Fleischer 2000)
 % This implementation is adapted to a directed graph without loops and and and identical number of source and sink nodes
 function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network_digraph, n_source_sink_nodes, demand_matrix, e_accuracy)
-     % network is the directed adjacency matrix
+     % network is the directed adjacency matrix with format (sources, other, sinks)
      % e_accuracy is the epsilon in (1+epsilon)
 
-     % demands is the serialized row-order upper triangular of a n_source_sink_nodes^2 demand matrix
-     demands = demand_matrix(~eye(size(demand_matrix)));
-
-     [~, ~, edge_capacities] = find(network);
-     n_nodes = size(network,1);
-     m_edges = numel(edge_capacities);
      k_demand_pairs = n_source_sink_nodes^2 - n_source_sink_nodes;
+
+     % We add helper nodes to conform to limit flow for each source-sink-pair according to the demand matrix
+     % This adds n_source_sink_nodes^2 - n_source_sink_nodes nodes to the network with each one edge that has capacity demand_i,j
+
+     %         | demand_helpers              | sources| routes|  sinks|
+     % helpers |                             |D12     |       |       |
+     %         |                             |D13     |       |       |
+     %         |             0               |   D21  |       |       |
+     %         |                             |   D23  |   0   |   0   |
+     %         |                             |     D31|       |       |
+     %         |                             |     D32|       |       |
+     % sources |                             |   0    |   A   |   I   |
+     % routes  |             0               |   0    |   B   |   C   |
+     % sinks   |                             |   0    |   0   |   0   |
+
+     % demands is the serialized row-order upper triangular of a n_source_sink_nodes^2 demand matrix
+     demand_matrix_transposed = transpose(demand_matrix);
+     demands = demand_matrix_transposed(~eye(size(demand_matrix)));
+
+     % Insert transfer graph (A,B,C,I)  
+     n_helper_nodes = k_demand_pairs;
+     network_full = sparse(size(network,1) + n_helper_nodes, size(network,1) + n_helper_nodes);
+     network_full(n_helper_nodes + 1:n_helper_nodes + size(network,1), n_helper_nodes + 1:n_helper_nodes + size(network,1)) = network;
+     
+     % Add demand helpers (D12, D13 etc)
+     for i_source_node = 1:n_source_sink_nodes
+        helpers_base_idx = (i_source_node-1) * (n_source_sink_nodes - 1);
+        for j_sink_node = 1:(n_source_sink_nodes - 1)
+          network_full(helpers_base_idx + j_sink_node, n_helper_nodes + i_source_node) = demands(helpers_base_idx + j_sink_node);
+        end
+     end
+     network_full_digraph = digraph(network_full);
+
+     [~, ~, edge_capacities] = find(network_full);
+     n_nodes = size(network_full,1);
+     m_edges = numel(edge_capacities);
+     
      demand_pair_idxs = combinations(1:n_source_sink_nodes, n_nodes-n_source_sink_nodes+1:n_nodes);
      % Remove diagonal
      demand_pair_idxs = demand_pair_idxs{demand_pair_idxs{:,1}~=demand_pair_idxs{:,2} - (n_nodes-n_source_sink_nodes),:};
 
      demand_paths = cell(k_demand_pairs, 1);
      for i_demand_pair = 1:k_demand_pairs
-          [~, demand_paths{i_demand_pair}] = allpaths(network_digraph, demand_pair_idxs(i_demand_pair, 1), demand_pair_idxs(i_demand_pair, 2));
+          [~, demand_paths{i_demand_pair}] = allpaths(network_full_digraph, demand_pair_idxs(i_demand_pair, 1), demand_pair_idxs(i_demand_pair, 2));
      end
      n_demand_path_sizes = cellfun('size', demand_paths, 1);
      n_demand_paths = sum(n_demand_path_sizes);
