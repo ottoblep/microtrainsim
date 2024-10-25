@@ -9,7 +9,9 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
      % We add helper nodes to conform to limit flow for each source-sink-pair according to the demand matrix
      % This adds n_source_sink_nodes^2 - n_source_sink_nodes nodes to the network with each one edge that has capacity demand_i,j
 
-     %         | demand_helpers              | sources| routes|  sinks|
+     % Example for three source and sink nodes
+
+     %         | demand_helper_sources       | sources| routes|  sinks|
      % helpers |                             |D12     |       |       |
      %         |                             |D13     |       |       |
      %         |             0               |   D21  |       |       |
@@ -20,38 +22,31 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
      % routes  |             0               |   0    |   B   |   C   |
      % sinks   |                             |   0    |   0   |   0   |
 
-     % demands is the serialized row-order upper triangular of a n_source_sink_nodes^2 demand matrix
-     demand_matrix_transposed = transpose(demand_matrix);
-     demands = demand_matrix_transposed(~eye(size(demand_matrix)));
+     [demand_rows,demand_cols,demand_vals] = find(demand_matrix);
+     k_demand_pairs = numel(demand_vals);
+     n_helper_nodes = k_demand_pairs;
 
      % Insert transfer graph (A,B,C,I)  
-     n_helper_nodes = k_demand_pairs;
      network_full = sparse(size(network,1) + n_helper_nodes, size(network,1) + n_helper_nodes);
      network_full(n_helper_nodes + 1:n_helper_nodes + size(network,1), n_helper_nodes + 1:n_helper_nodes + size(network,1)) = network;
-     
-     % Add demand helpers (D12, D13 etc)
-     for i_source_node = 1:n_source_sink_nodes
-        helpers_base_idx = (i_source_node-1) * (n_source_sink_nodes - 1);
-        for j_sink_node = 1:(n_source_sink_nodes - 1)
-          network_full(helpers_base_idx + j_sink_node, n_helper_nodes + i_source_node) = demands(helpers_base_idx + j_sink_node);
-        end
-     end
-     network_full_digraph = digraph(network_full);
 
-     [~, ~, edge_capacities] = find(network_full);
+     % Add demand constraint helper nodes (D12, D13 etc)
+     for i_demand_pair = 1:n_helper_nodes
+          network_full(i_demand_pair, demand_cols(i_demand_pair)) = demand_vals(i_demand_pair);
+     end
+
+     network_full_digraph = digraph(network_full);
      n_nodes = size(network_full,1);
-     m_edges = numel(edge_capacities);
-     
-     demand_pair_idxs = combinations(1:n_source_sink_nodes, n_nodes-n_source_sink_nodes+1:n_nodes);
-     % Remove diagonal
-     demand_pair_idxs = demand_pair_idxs{demand_pair_idxs{:,1}~=demand_pair_idxs{:,2} - (n_nodes-n_source_sink_nodes),:};
+     m_edges = numedges(network_full_digraph);
 
      demand_paths = cell(k_demand_pairs, 1);
      for i_demand_pair = 1:k_demand_pairs
-          [~, demand_paths{i_demand_pair}] = allpaths(network_full_digraph, demand_pair_idxs(i_demand_pair, 1), demand_pair_idxs(i_demand_pair, 2));
+          [~, demand_paths{i_demand_pair}] = allpaths(network_full_digraph, demand_rows(i_demand_pair), n_nodes - n_source_sink_nodes + demand_cols(i_demand_pair));
      end
      n_demand_path_sizes = cellfun('size', demand_paths, 1);
      n_demand_paths = sum(n_demand_path_sizes);
+
+     % Fully Polynomial-Time Approximation Scheme Algorithm
 
      % L maximum number of arcs in augmenting path
      L = max(n_demand_path_sizes);
@@ -64,7 +59,7 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
      l = ones(1, m_edges) * delta;
 
      n_phases = 0;
-     for i = 1:log(((1+e_accuracy)/delta)) / log(1+e_accuracy)
+     for i = 1:floor(log(((1+e_accuracy)/delta)) / log(1+e_accuracy))
           n_phases = n_phases + 1;
           for j = 1:k_demand_pairs
                relevant_paths = demand_paths{j};
@@ -75,14 +70,14 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
                P = relevant_paths{P_idx,1};
 
                while P_len < min([1 delta*(1+e_accuracy)^i])
-                    demand_to_assign_u = min(edge_capacities(P));
+                    demand_to_assign_u = min(network_full_digraph.Edges.Weight(P));
 
                     global_path_idx = P_idx + sum(n_demand_path_sizes(1:j-1));
                     x(global_path_idx) = x(global_path_idx) + demand_to_assign_u;
 
                     for i_path_edge = 1:numel(P)
                          global_edge_idx = P(i_path_edge);
-                         l(global_edge_idx) = l(global_edge_idx) * (1 + (demand_to_assign_u * e_accuracy) / edge_capacities(global_edge_idx));
+                         l(global_edge_idx) = l(global_edge_idx) * (1 + (demand_to_assign_u * e_accuracy) / network_full_digraph.Edges.Weight(global_edge_idx));
                     end
 
                     [P_idx, P_len] = weightedShortestPath(relevant_paths, l);
@@ -111,6 +106,9 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
                end
           end
      end
+
+     % Cut helper edges
+     edge_flows = edge_flows(end - numedges(network_digraph) + 1:end);
 end
 
 function [shortest_path_idx best_length] = weightedShortestPath(paths, edge_weights)
