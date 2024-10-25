@@ -320,7 +320,7 @@ function combined_score = geneticObjective(network, params, solution)
     solution = reshape(solution, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor);
     [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
     collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
-    [demand_score, transfer_graph_digraph, flow_solution] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+    [demand_score, ~, ~] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
     combined_score = collision_score + demand_score;
 end
 
