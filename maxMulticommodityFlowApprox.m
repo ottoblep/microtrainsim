@@ -32,7 +32,7 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
 
      % Add demand constraint helper nodes (D12, D13 etc)
      for i_demand_pair = 1:n_helper_nodes
-          network_full(i_demand_pair, demand_cols(i_demand_pair)) = demand_vals(i_demand_pair);
+          network_full(i_demand_pair, n_helper_nodes + demand_rows(i_demand_pair)) = demand_vals(i_demand_pair);
      end
 
      network_full_digraph = digraph(network_full);
@@ -41,7 +41,7 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
 
      demand_paths = cell(k_demand_pairs, 1);
      for i_demand_pair = 1:k_demand_pairs
-          [~, demand_paths{i_demand_pair}] = allpaths(network_full_digraph, demand_rows(i_demand_pair), n_nodes - n_source_sink_nodes + demand_cols(i_demand_pair));
+          [~, demand_paths{i_demand_pair}] = allpaths(network_full_digraph, i_demand_pair, n_nodes - n_source_sink_nodes + demand_cols(i_demand_pair));
      end
      n_demand_path_sizes = cellfun('size', demand_paths, 1);
      n_demand_paths = sum(n_demand_path_sizes);
