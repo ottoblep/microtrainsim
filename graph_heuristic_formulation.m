@@ -1,5 +1,5 @@
 %% Generate Network
-adj = random_planar_graph(30);
+adj = randomPlanarGraph(30);
 network.adjacency_matrix = triu((adj + adj') * 1000, 1);
 %network.adjacency_matrix = [ 0 100;
 %                             0 0 ];

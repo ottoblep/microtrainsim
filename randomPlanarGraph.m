@@ -1,4 +1,4 @@
-function adj = random_planar_graph(n)
+function adj = randomPlanarGraph(n)
     % adj = spalloc(n, n, 6*n*n); % for finite planar graphs the average degree is strictly less than 6
     del = delaunay(randn(n, 2));
     for i_triangle = 1:size(del, 1)
