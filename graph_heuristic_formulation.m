@@ -311,8 +311,11 @@ function [demand_score, transfer_graph_digraph, edge_flows] = demandSatisfaction
 
     transfer_graph = constructTransferGraph(network, event_set, max_changeover_time, train_capacity);
     transfer_graph_digraph = digraph(transfer_graph);
-    %[flow_value, edge_flows] = maxMulticommodityFlowLP(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix);
-    [flow_value, edge_flows] = maxMulticommodityFlowApprox(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix, 0.01);
+    
+    [flow_value, edge_flows] = maxMulticommodityFlowApprox(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix, 0.2);
+    %[flow_value, edge_flows] = maxMulticommodityFlowLP(transfer_graph,
+    %transfer_graph_digraph, size(demand_matrix,1), demand_matrix);
+
     demand_score = flow_value / sum(demand_matrix,'all');
 end
 
