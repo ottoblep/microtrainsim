@@ -63,10 +63,10 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
           n_phases = n_phases + 1;
           for j = 1:k_demand_pairs
                relevant_paths = demand_paths{j};
-               [P_idx, P_len] = weightedShortestPath(relevant_paths, l);
-               if P_idx == 0
+               if isempty(relevant_paths)
                     continue;
                end
+               [P_idx, P_len] = weightedShortestPath(relevant_paths, l);
                P = relevant_paths{P_idx,1};
 
                while P_len < min([1 delta*(1+e_accuracy)^i])
@@ -114,15 +114,10 @@ end
 function [shortest_path_idx best_length] = weightedShortestPath(paths, edge_weights)
      best_length = Inf;
      shortest_path_idx = 0;
-     if isempty(paths)
-          shortest_path_idx = 0;
-     end
      for i_path = 1:numel(paths)
           path = paths{i_path,1};
-          length = 0;
-          for j_edge_in_path = 1:size(path,2)
-               length = length + edge_weights(path(j_edge_in_path));
-          end
+          length = sum(edge_weights(path));
+
           if length < best_length
                best_length = length;
                shortest_path_idx = i_path;
