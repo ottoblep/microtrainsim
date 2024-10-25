@@ -38,6 +38,7 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
      network_full_digraph = digraph(network_full);
      n_nodes = size(network_full,1);
      m_edges = numedges(network_full_digraph);
+     edge_capacities = network_full_digraph.Edges.Weight;
 
      demand_paths = cell(k_demand_pairs, 1);
      for i_demand_pair = 1:k_demand_pairs
@@ -68,17 +69,15 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
                end
                [P_idx, P_len] = weightedShortestPath(relevant_paths, l);
                P = relevant_paths{P_idx,1};
+               global_path_idx_base = sum(n_demand_path_sizes(1:j-1));
 
                while P_len < min([1 delta*(1+e_accuracy)^i])
-                    demand_to_assign_u = min(network_full_digraph.Edges.Weight(P));
+                    demand_to_assign_u = min(edge_capacities(P));
 
-                    global_path_idx = P_idx + sum(n_demand_path_sizes(1:j-1));
+                    global_path_idx = P_idx + global_path_idx_base;
                     x(global_path_idx) = x(global_path_idx) + demand_to_assign_u;
 
-                    for i_path_edge = 1:numel(P)
-                         global_edge_idx = P(i_path_edge);
-                         l(global_edge_idx) = l(global_edge_idx) * (1 + (demand_to_assign_u * e_accuracy) / network_full_digraph.Edges.Weight(global_edge_idx));
-                    end
+                    l(P) = l(P) + ((l(P) * demand_to_assign_u * e_accuracy) ./ edge_capacities(P)');
 
                     [P_idx, P_len] = weightedShortestPath(relevant_paths, l);
                     P = relevant_paths{P_idx,1};
