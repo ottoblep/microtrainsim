@@ -20,8 +20,9 @@ clear tmp_adj;
 
 %% Parameters
 params.n_timesteps = 8640; % 10s timesteps for one whole day, must be divisible my interpolation factor
-params.interpolation_factor = 30; % Support points for acceleration and switch direction curves for every n timesteps (not linearly spaced)
-params.n_trains = 10;
+params.interpolation_factor = 160; % Support points for acceleration and switch direction curves for every n timesteps (not linearly spaced)
+assert(mod(params.n_timesteps, params.interpolation_factor) == 0);
+params.n_trains = 15;
 params.min_separation = 100; % m
 params.max_speed = 1.11; % m/10s 200km/h
 params.max_accel = 46.27; % m/(10s)² 0-100kmh in 1m
@@ -281,7 +282,8 @@ function collision_score = collisionPenalties(network, traj_set, min_separation,
     % For each train pair update the minimum time to collision then skip that time and check again
     n_trains = size(traj_set, 1);
     n_timesteps = size(traj_set, 3);
-    parfor i_train = 1:n_trains
+    
+    for i_train = 1:n_trains
         for j_train = i_train+1:n_trains
             timestep = 1;
             while timestep < n_timesteps
@@ -291,7 +293,7 @@ function collision_score = collisionPenalties(network, traj_set, min_separation,
                     guaranteed_safe_time = int32(floor((distance - min_separation) / (2 * max_speed))) + 1;
                 else
                     % Exponential penalty for closeness beyond the minimum separation
-                    penalty = penalty + min(10000, (min_separation/distance - 1));
+                    penalty = penalty + min(1e8, (min_separation/distance - 1));
                     guaranteed_safe_time = 1;
                 end
 
@@ -312,7 +314,7 @@ function [demand_score, transfer_graph_digraph, edge_flows] = demandSatisfaction
     transfer_graph = constructTransferGraph(network, event_set, max_changeover_time, train_capacity);
     transfer_graph_digraph = digraph(transfer_graph);
     
-    [flow_value, edge_flows] = maxMulticommodityFlowApprox(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix, 0.2);
+    [flow_value, edge_flows] = maxMulticommodityFlowApprox(transfer_graph, transfer_graph_digraph, size(demand_matrix,1), demand_matrix, 0.2);    
     %[flow_value, edge_flows] = maxMulticommodityFlowLP(transfer_graph,
     %transfer_graph_digraph, size(demand_matrix,1), demand_matrix);
 
@@ -350,6 +352,7 @@ function solution = greedySolution(network, params)
 
             abort = abort + 1;
             if abort > 1000
+                disp("Failed to construct a collision free solution. Restarting ...");
                 new_solution = rand(1, 4 * params.n_timesteps / params.interpolation_factor);
                 new_traj_set = [];
                 new_traj_set(1,:,:) = constructTrajectory(network, new_train_solution, params.initial_positions(1,:), params.initial_speeds(1), params.max_accel, params.max_speed, params.interpolation_factor);
@@ -392,11 +395,19 @@ function geneticGlobalSearch(network, params)
     csvwrite("network.csv", network.adjacency_matrix);
     csvwrite("demands.csv", params.demand_matrix);
     nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
-    obj_fun = @(solution) -geneticObjective(network, params, solution);
-    options = optimoptions('ga','Display','iter', 'UseParallel', false, 'MaxStallGenerations', 25, 'PopulationSize', 10);
+    % GA uses a nvars^2 matrix for mutation costing a lot of memory
+    % GA wants normalized parameters
+    obj_fun = @(solution) -geneticObjective(network, params, solution + 0.5);
+    options = optimoptions('ga', ...
+        'Display','iter', ...
+        'UseParallel', true, ...
+        'MaxStallGenerations', 25, ...
+        'PopulationSize', 15, ...
+        'InitialPopulationRange', [-0.5; 0.5] ...
+        );
     [X, fval, exitflag, output, population, scores] = ga(obj_fun, nvars, [], [], [], [], zeros(nvars, 1), ones(nvars, 1), [], options);
     % Save result
-    solution = reshape(X, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor);
+    solution = reshape(X, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor) + 0.5;
     [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
     csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
     csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
