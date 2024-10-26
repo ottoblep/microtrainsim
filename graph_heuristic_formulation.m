@@ -368,38 +368,34 @@ end
 
 %% Search Methods
 
-function greedyRandomSearch(network, params, max_time)
+function [solution, traj_set] = greedyRandomSearch(network, params, max_time)
     %% Generate a random collision free solution then evaluate demand score
-    csvwrite("network.csv", network.adjacency_matrix);
-    csvwrite("demands.csv", params.demand_matrix);
     tic;
-    best_solution_set = {[] -Inf [] []}; % traj_set, demand_score, transfer_graph_digraph, edge_flows
+    best_solution_set = {[] -Inf [] []}; % traj_set, demand_score, transfer_graph_digraph, solution,
     while best_solution_set{2} < 1
-        [traj_set, event_set] = constructTrajectorySet(network, greedySolution(network, params), params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
-        [new_demand_score, new_transfer_graph_digraph, new_edge_flows] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+        new_solution = greedySolution(network, params);
+        [traj_set, event_set] = constructTrajectorySet(network, new_solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
+        [new_demand_score, ~, ~] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
         if best_solution_set{2} < new_demand_score
-            best_solution_set = {traj_set new_demand_score new_transfer_graph_digraph new_edge_flows};
+            best_solution_set = {traj_set new_demand_score new_solution};
             disp(strcat("Best demand satisfaction: ", string(best_solution_set{2} * 100), "%"));
-            csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
-            csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
         end
         if toc > max_time
             break;
         end
+        solution = best_solution_set{3};
+        traj_set = best_solution_set{1};
     end
-    plotDemandFlow(best_solution_set{3}, size(network.adjacency_matrix,1), best_solution_set{4});
 end
 
-function geneticGlobalSearch(network, params)
+function [solution, traj_set] = geneticGlobalSearch(network, params)
     %% Run genetic algorithm globally over collision and demand objective
-    csvwrite("network.csv", network.adjacency_matrix);
-    csvwrite("demands.csv", params.demand_matrix);
     nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
     % GA uses a nvars^2 matrix for mutation costing a lot of memory
     % GA wants normalized parameters
     obj_fun = @(solution) -geneticObjective(network, params, solution + 0.5);
     options = optimoptions('ga', ...
-        'Display','iter', ...
+        'Display','diagnose', ...
         'UseParallel', true, ...
         'MaxStallGenerations', 25, ...
         'PopulationSize', 15, ...
@@ -409,9 +405,33 @@ function geneticGlobalSearch(network, params)
     % Save result
     solution = reshape(X, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor) + 0.5;
     [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
-    csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
-    csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
 end
 
-greedyRandomSearch(network, params, 10);
-%geneticGlobalSearch(network, params);
+function [solution, traj_set] = particleSwarmSearch(network, params)
+    %% Run particle swarm optimization globally over collision and demand objective
+    nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
+    % GA uses a nvars^2 matrix for mutation costing a lot of memory
+    % GA wants normalized parameters
+    obj_fun = @(solution) -geneticObjective(network, params, solution + 0.5);
+    options = optimoptions('particleswarm', ...
+        'Display','iter', ...
+        'UseParallel', true, ...
+        'MaxStallIterations', 25, ...
+        'SwarmSize', 1000, ...
+        'InitialSwarmSpan', 1 ...
+        );
+    [X, fval, exitflag, output, scores] = particleswarm(obj_fun, nvars, zeros(nvars, 1), ones(nvars, 1), options);
+    % Save result
+    solution = reshape(X, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor) + 0.5;
+    [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
+end
+
+csvwrite("network.csv", network.adjacency_matrix);
+csvwrite("demands.csv", params.demand_matrix);
+
+[solution, traj_set] = greedyRandomSearch(network, params, 5);
+[solution, traj_set] = geneticGlobalSearch(network, params);
+[solution, traj_set] = particleSwarmSearch(network, params);
+
+csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
+csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
