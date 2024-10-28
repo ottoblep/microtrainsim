@@ -26,18 +26,26 @@ function [flow_value, edge_flows] = maxMulticommodityFlowApprox(network, network
      k_demand_pairs = numel(demand_vals);
      n_helper_nodes = k_demand_pairs;
 
-     % Insert transfer graph (A,B,C,I)  
-     network_full = sparse(size(network,1) + n_helper_nodes, size(network,1) + n_helper_nodes);
-     network_full(n_helper_nodes + 1:n_helper_nodes + size(network,1), n_helper_nodes + 1:n_helper_nodes + size(network,1)) = network;
+     % Collect sparse values for transfer graph (A,B,C,I)  
+     [network_rows, network_cols, network_vals] = find(network);
 
-     % Add demand constraint helper nodes (D12, D13 etc)
+     % Shift to new size
+     network_rows = network_rows + n_helper_nodes;
+     network_cols = network_cols + n_helper_nodes;
+
+     % Collect sparse values for demand constraint helper nodes (D12, D13 etc)
+     demand_helper_sparse_vals = zeros(n_helper_nodes, 3); % Rows, Cols, Values
      for i_demand_pair = 1:n_helper_nodes
-          network_full(i_demand_pair, n_helper_nodes + demand_rows(i_demand_pair)) = demand_vals(i_demand_pair);
+          demand_helper_sparse_vals(i_demand_pair, 1) = i_demand_pair;
+          demand_helper_sparse_vals(i_demand_pair, 2) = n_helper_nodes + demand_rows(i_demand_pair);
+          demand_helper_sparse_vals(i_demand_pair, 3) = demand_vals(i_demand_pair);
      end
 
-     network_full_digraph = digraph(network_full);
-     n_nodes = size(network_full,1);
-     m_edges = numedges(network_full_digraph);
+     % Build graph for full network with helpers from sparse matrix values 
+     network_full_digraph = digraph([demand_helper_sparse_vals(:, 1); network_rows], [demand_helper_sparse_vals(:, 2); network_cols], [demand_helper_sparse_vals(:, 3); network_vals]);
+
+     n_nodes = network_full_digraph.numnodes;
+     m_edges = network_full_digraph.numedges;
      edge_capacities = network_full_digraph.Edges.Weight;
 
      demand_paths = cell(k_demand_pairs, 1);
