@@ -70,11 +70,11 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
     % solution values (time 0-1, acceleration 0-1, switch_direction 0-1)
     % solution serialization (accel_timesteps, accel_values, sw_direc_timesteps, sw_direc_values)
     % initial position dimensions (3)
-    % initial position values (edge 0-n, position on edge 0-1)
+    % initial position values (edge 0-n, position on edge 0-1, train orientation on edge -1, 1)
     % initial speed dimensions (1)
     % initial speed values (speed: -max_speed-max_speed)
     % trajectory dimensions (3, timestep)
-    % trajectory values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
+    % trajectory values (edge 0-n, position on edge 0-1, train orientation on edge -1, 1)
     % events dimensions (2, n)
     % events values (presence_at_node, timestep)
 
@@ -95,6 +95,13 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
     traj(1, :) = initial_position(1);
     traj(2, :) = initial_position(2);
     traj(3, :) = initial_position(3);
+
+    % Record possible initial placement on node
+    if initial_position(2) == 0
+        events(:, end+1) = [network.edge_rows(initial_position(1)), 1];
+    elseif initial_position(2) == 1
+        events(:, end+1) = [network.edge_cols(initial_position(1)), 1];
+    end
 
     pivot_timestep = 1;
     while pivot_timestep < n_timesteps
