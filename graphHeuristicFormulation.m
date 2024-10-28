@@ -402,7 +402,7 @@ function [solution, traj_set] = geneticGlobalSearch(network, params)
         'PopulationSize', 15, ...
         'InitialPopulationRange', [-0.5; 0.5] ...
         );
-    [X, fval, exitflag, output, population, scores] = ga(obj_fun, nvars, [], [], [], [], zeros(nvars, 1), ones(nvars, 1), [], options);
+    [X, fval, exitflag, output, population, scores] = ga(obj_fun, nvars, [], [], [], [], -0.5 * ones(nvars, 1), 0.5 * ones(nvars, 1), [], options);
     % Save result
     solution = reshape(X, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor) + 0.5;
     [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
@@ -421,7 +421,7 @@ function [solution, traj_set] = particleSwarmSearch(network, params)
         'SwarmSize', 1000, ...
         'InitialSwarmSpan', 1 ...
         );
-    [X, fval, exitflag, output, scores] = particleswarm(obj_fun, nvars, zeros(nvars, 1), ones(nvars, 1), options);
+    [X, fval, exitflag, output, scores] = particleswarm(obj_fun, nvars, -0.5 * ones(nvars, 1), 0.5 * ones(nvars, 1), options);
     % Save result
     solution = reshape(X, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor) + 0.5;
     [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
