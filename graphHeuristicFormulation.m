@@ -374,6 +374,16 @@ function solution = greedySolution(network, params)
     end
 end
 
+function population = greedyInitialPopulation(params, network, n_individuals)
+    % Generate set of candidates using greedy
+    n_vars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
+    population = zeros(n_individuals, n_vars);
+    for i = 1:n_individuals
+        disp(strcat("Generating initial population ", string(i/n_individuals * 100), "%"));
+        population(i, :) = reshape(greedySolution(network, params), 1, n_vars);
+    end
+end
+
 %% Search Methods
 
 function [solution, traj_set] = greedyRandomSearch(network, params, max_time)
@@ -382,7 +392,7 @@ function [solution, traj_set] = greedyRandomSearch(network, params, max_time)
     best_solution_set = {[] -Inf [] []}; % traj_set, demand_score, transfer_graph_digraph, solution,
     while best_solution_set{2} < 1
         new_solution = greedySolution(network, params);
-        [traj_set, event_set] = constructTrajectorySet(network, new_solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
+            [traj_set, event_set] = constructTrajectorySet(network, new_solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
         [new_demand_score, ~, ~] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
         if best_solution_set{2} < new_demand_score
             best_solution_set = {traj_set new_demand_score new_solution};
@@ -390,9 +400,9 @@ function [solution, traj_set] = greedyRandomSearch(network, params, max_time)
         end
         if toc > max_time
             break;
-        end
-        solution = best_solution_set{3};
-        traj_set = best_solution_set{1};
+    end
+    solution = best_solution_set{3};
+    traj_set = best_solution_set{1};
     end
 end
 
@@ -401,13 +411,15 @@ function [solution, traj_set] = geneticGlobalSearch(network, params)
     nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
     % GA uses a nvars^2 matrix for mutation costing a lot of memory
     % GA wants normalized parameters
+    n_pop = 15;
     obj_fun = @(solution) -geneticObjective(network, params, solution + 0.5);
     options = optimoptions('ga', ...
         'Display','diagnose', ...
         'UseParallel', true, ...
         'MaxStallGenerations', 25, ...
-        'PopulationSize', 15, ...
-        'InitialPopulationRange', [-0.5; 0.5] ...
+        'PopulationSize', n_pop, ...
+        'InitialPopulationRange', [-0.5; 0.5], ...
+        'InitialPopulationMatrix', greedyInitialPopulation(params, network, n_pop) - 0.5 ...
         );
     [X, fval, exitflag, output, population, scores] = ga(obj_fun, nvars, [], [], [], [], -0.5 * ones(nvars, 1), 0.5 * ones(nvars, 1), [], options);
     % Save result
@@ -418,15 +430,15 @@ end
 function [solution, traj_set] = particleSwarmSearch(network, params)
     %% Run particle swarm optimization globally over collision and demand objective
     nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
-    % GA uses a nvars^2 matrix for mutation costing a lot of memory
-    % GA wants normalized parameters
     obj_fun = @(solution) -geneticObjective(network, params, solution + 0.5);
+    n_pop = 100;
     options = optimoptions('particleswarm', ...
         'Display','iter', ...
         'UseParallel', true, ...
         'MaxStallIterations', 25, ...
-        'SwarmSize', 1000, ...
-        'InitialSwarmSpan', 1 ...
+        'SwarmSize', n_pop, ...
+        'InitialSwarmSpan', 1, ...
+        'InitialPoints', greedyInitialPopulation(params, network, n_pop) - 0.5 ...
         );
     [X, fval, exitflag, output, scores] = particleswarm(obj_fun, nvars, -0.5 * ones(nvars, 1), 0.5 * ones(nvars, 1), options);
     % Save result
