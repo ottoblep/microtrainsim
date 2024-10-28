@@ -31,7 +31,7 @@ params.train_capacity = 400; % 400 Passengers
 
 params.demand_matrix = randi(1000, size(network.adjacency_matrix,1));
 params.demand_matrix(logical(eye(size(params.demand_matrix)))) = 0;
-params.demand_matrix(randperm(numel(params.demand_matrix), numel(params.demand_matrix)/2)) = 0; % make demand matrix more sparse
+params.demand_matrix(randperm(numel(params.demand_matrix), round(numel(params.demand_matrix)/2))) = 0; % make demand matrix more sparse
 %params.demand_matrix = [ 0 20;
 %                         0 0];
 params.initial_positions = randi([1,length(network.edge_values)], params.n_trains, 3);
