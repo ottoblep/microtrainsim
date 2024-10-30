@@ -319,6 +319,13 @@ function [demand_score, transfer_graph_digraph, edge_flows] = demandSatisfaction
     % event_set values (presence_at_node, timestep, train)
     assert(all(size(demand_matrix) == size(network.adjacency_matrix)));
 
+    if isempty(event_set)
+        demand_score = 0;
+        edge_flows = zeros(numel(find(network.adjacency_matrix)), 1);
+        transfer_graph_digraph = digraph([]);
+        return;
+    end
+
     transfer_graph = constructTransferGraph(network, event_set, max_changeover_time, train_capacity);
     transfer_graph_digraph = digraph(transfer_graph);
     
@@ -343,13 +350,13 @@ function solution = randomSolution(params)
     solution = rand(params.n_trains, 4 * params.n_timesteps / params.interpolation_factor);
 end
 
-function solution = greedySolution(network, params)
+function solution = greedyValidSolution(network, params, stall_time)
     %% Brute-forces valid routes sequentially
     solution = rand(1, 4 * params.n_timesteps / params.interpolation_factor);;
     traj_set(1,:,:) = constructTrajectory(network, solution, params.initial_positions(1,:), params.initial_speeds(1), params.max_accel, params.max_speed, params.interpolation_factor);
     i_train = 2;
     while i_train <= params.n_trains
-        abort = 1;
+        stall_timer = tic;
         collision_score = -Inf;
         while collision_score < 0
             new_train_solution = rand(1, 4 * params.n_timesteps / params.interpolation_factor);
@@ -358,8 +365,7 @@ function solution = greedySolution(network, params)
             new_solution = cat(1, solution, new_train_solution);
             collision_score = collisionPenalties(network, new_traj_set, params.min_separation, params.max_speed);
 
-            abort = abort + 1;
-            if abort > 1000
+            if toc(stall_timer) > stall_time
                 disp("Failed to construct a collision free solution. Restarting ...");
                 new_solution = rand(1, 4 * params.n_timesteps / params.interpolation_factor);
                 new_traj_set = [];
@@ -374,23 +380,69 @@ function solution = greedySolution(network, params)
     end
 end
 
+function [solution, traj_set] = greedySolution(network, params, per_train_stall_time)
+    %% Place each train greedily considering demand and collisions
+    traj_set = [];
+    event_set = [];
+    solution = [];
+
+    for i_train = 1:params.n_trains
+        stall_timer = tic;
+        round_best_traj_set = [];
+        round_best_event_set = [];
+        round_best_train_solution = [];
+        round_best_score = -Inf;
+
+        while toc(stall_timer) < per_train_stall_time
+            % Generate new trajectory
+            new_train_solution = rand(1, 4 * params.n_timesteps / params.interpolation_factor);
+            [new_traj, new_events] = constructTrajectory(network, new_train_solution, params.initial_positions(i_train,:), params.initial_speeds(i_train), params.max_accel, params.max_speed, params.interpolation_factor);
+
+            % Add new trajectory to old set
+            new_traj_set = cat(1, traj_set, reshape(new_traj, 1, size(new_traj,1), size(new_traj,2)));
+            new_events(3,:) = i_train;
+            new_event_set = cat(2, event_set, new_events);
+
+            % Test new trajectory set
+            collision_score = collisionPenalties(network, new_traj_set, params.min_separation, params.max_speed);
+            demand_score = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+
+            if collision_score + demand_score > round_best_score
+                round_best_score = collision_score + demand_score;
+                stall_timer = tic;
+                round_best_event_set = new_event_set;
+                round_best_traj_set = new_traj_set;
+                round_best_train_solution = new_train_solution;
+            end
+        end
+
+        traj_set = round_best_traj_set;
+        event_set = round_best_event_set;
+        solution = cat(1, solution, round_best_train_solution);
+    end
+end
+
 %% Search Methods
 
-function [solution, traj_set] = greedyRandomSearch(network, params, max_time)
-    %% Generate a random collision free solution then evaluate demand score
-    tic;
+function [solution, traj_set] = greedySearch(network, params, valid_solutions_suffice, overall_stall_time, solution_stall_time)
+    %% Generate greedy solutions then evaluate demand score
+    stall_timer = tic;
     best_solution_set = {[] -Inf [] []}; % traj_set, demand_score, transfer_graph_digraph, solution,
-    while best_solution_set{2} < 1
-        new_solution = greedySolution(network, params);
+    while toc(stall_timer) < overall_stall_time
+        if valid_solutions_suffice
+            new_solution = greedyValidSolution(network, params, solution_stall_time);
+        else
+            new_solution = greedySolution(network, params, solution_stall_time);
+        end
         [traj_set, event_set] = constructTrajectorySet(network, new_solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
         [new_demand_score, ~, ~] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+
         if best_solution_set{2} < new_demand_score
+            stall_timer = tic;
             best_solution_set = {traj_set new_demand_score new_solution};
             disp(strcat("Best demand satisfaction: ", string(best_solution_set{2} * 100), "%"));
         end
-        if toc > max_time
-            break;
-        end
+
         solution = best_solution_set{3};
         traj_set = best_solution_set{1};
     end
@@ -437,9 +489,11 @@ end
 csvwrite("network.csv", network.adjacency_matrix);
 csvwrite("demands.csv", params.demand_matrix);
 
-[solution, traj_set] = greedyRandomSearch(network, params, 5);
-[solution, traj_set] = geneticGlobalSearch(network, params);
-[solution, traj_set] = particleSwarmSearch(network, params);
+[solution, traj_set] = greedySearch(network, params, true, 10, 2);
+disp("---");
+[solution, traj_set] = greedySearch(network, params, false, 10, 0.01);
+%[solution, traj_set] = geneticGlobalSearch(network, params);
+%[solution, traj_set] = particleSwarmSearch(network, params);
 
 csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
 csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
