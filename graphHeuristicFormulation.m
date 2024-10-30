@@ -4,11 +4,11 @@ function greedyHeuristicFormulation()
     csvwrite("network.csv", network.adjacency_matrix);
     csvwrite("demands.csv", params.demand_matrix);
 
-    [solution, traj_set] = greedySearch(network, params, true, 10, 2);
-    disp("---");
+    %[solution, traj_set] = greedySearch(network, params, true, 2, 2);
+    %disp("---");
     %[solution, traj_set] = greedySearch(network, params, false, 10, 0.01);
     %[solution, traj_set] = geneticGlobalSearch(network, params);
-    %[solution, traj_set] = particleSwarmSearch(network, params);
+    [solution, traj_set] = particleSwarmSearch(network, params);
 
     csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
     csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
@@ -16,10 +16,13 @@ end
 
 function [network, params] = generateEnvironment()
     %% Network
-    adj = randomPlanarGraph(10);
+    adj = randomPlanarGraph(5);
     network.adjacency_matrix = triu((adj + adj') * 1000, 1);
-    %network.adjacency_matrix = [ 0 100;
-    %                             0 0 ];
+    network.adjacency_matrix = [ 0 0 1000 0 0;
+                                 0 0 1000 0 0;
+                                 0 0 0 1000 1000;
+                                 0 0 0 0 0;
+                                 0 0 0 0 0;];
     connection_indexes = find(network.adjacency_matrix);
     network.adjacency_matrix(connection_indexes) = network.adjacency_matrix(connection_indexes) .* (randi([1,3],size(connection_indexes)));
     [network.edge_rows, network.edge_cols, network.edge_values] = find(network.adjacency_matrix);
@@ -37,13 +40,14 @@ function [network, params] = generateEnvironment()
     %% Parameters
     params.n_timesteps = 8640; % 10s timesteps for one whole day, must be divisible my interpolation factor
     params.interpolation_factor = 160; % Support points for acceleration and switch direction curves for every n timesteps (not linearly spaced)
-    params.n_trains = 10;
+    params.n_trains = 3;
     params.min_separation = 100; % m
     params.max_speed = 1.11; % m/10s 200km/h
     params.max_accel = 46.27; % m/(10s)² 0-100kmh in 1m
     params.max_changeover_time = 1440; % 4hrs
     params.train_capacity = 400; % 400 Passengers
 
+    assert(size(network.adjacency_matrix,1) > params.n_trains); % Trains can start at a unique node
     assert(mod(params.n_timesteps, params.interpolation_factor) == 0);
 
     params.demand_matrix = randi(1000, size(network.adjacency_matrix,1));
@@ -52,10 +56,20 @@ function [network, params] = generateEnvironment()
     %params.demand_matrix = [ 0 20;
     %                         0 0];
 
-    params.initial_positions = randi([1,length(network.edge_values)], params.n_trains, 3);
-    params.initial_positions(:,2) = rand(params.n_trains,1);
-    params.initial_positions(:,3) = randi([0,1],params.n_trains,1) * 2 - 1;
-    params.initial_speeds = (rand(params.n_trains,1) * 2 - 1) * params.max_speed;
+    % Random initial position
+    %params.initial_positions = randi([1,length(network.edge_values)], params.n_trains, 3);
+    %params.initial_positions(:,2) = rand(params.n_trains,1);
+    %params.initial_positions(:,3) = randi([0,1],params.n_trains,1) * 2 - 1;
+    %params.initial_speeds = (rand(params.n_trains,1) * 2 - 1) * params.max_speed;
+    %params.destinations = randi([1,size(network.adjacency_matrix)], params.n_trains, 1);
+
+    % Unique node initial position
+    params.initial_positions(:, 1) = [1 2 3];
+    params.initial_positions(:, 2) = [0 0 1];
+    params.initial_positions(:, 3) = [1 1 -1];
+    params.initial_speeds = zeros(params.n_trains, 1);
+
+    params.destinations = [5 4 2];
 end
 
 %% Solution Construction
@@ -96,7 +110,7 @@ function collision_score = collisionPenalties(network, traj_set, min_separation,
     %% Evaluates a set of train trajectories
     % trajectory_set dimensions (n_trains, 3, timestep)
     % trajectory_set values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
-    penalty = 0;
+    collision_score = 0;
 
     % Separation Penalties
     % For each train pair update the minimum time to collision then skip that time and check again
@@ -113,7 +127,7 @@ function collision_score = collisionPenalties(network, traj_set, min_separation,
                     guaranteed_safe_time = int32(floor((distance - min_separation) / (2 * max_speed))) + 1;
                 else
                     % Exponential penalty for closeness beyond the minimum separation
-                    penalty = penalty + min(1e8, (min_separation/distance - 1));
+                    collision_score = collision_score - min(1e8, (min_separation/distance - 1));
                     guaranteed_safe_time = 1;
                 end
 
@@ -121,8 +135,27 @@ function collision_score = collisionPenalties(network, traj_set, min_separation,
             end
         end
     end
+end
 
-    collision_score = -penalty;
+function destination_score = destinationPenalties(network, traj_set, destinations)
+    %% Penalizes train's distance from destination at the end of the trajectory
+    % destinations dimensions (1, n_nodes)
+    % destinations values (destination_node_idx)
+    destination_score = 0;
+
+    for i_train = 1:size(traj_set, 1)
+        edge_i = int32(traj_set(i_train, 1, size(traj_set, 3)));
+        i_edge_length = network.edge_values(edge_i);
+        % Find shortest path with precomputed distance matrix
+        i_node_backward = network.edge_rows(edge_i);
+        i_node_forward = network.edge_cols(edge_i);
+        i_remaining_backward_length = traj_set(i_train, 2, size(traj_set, 3)) * i_edge_length;
+        i_remaining_forward_length = i_edge_length - i_remaining_backward_length;
+        dist1 = i_remaining_backward_length + network.all_shortest_paths(i_node_backward, destinations(i_train));
+        dist2 = i_remaining_forward_length + network.all_shortest_paths(i_node_forward, destinations(i_train));
+        distance = min([dist1, dist2]);
+        destination_score = destination_score - distance;
+    end
 end
 
 function [demand_score, transfer_graph_digraph, edge_flows] = demandSatisfaction(network, event_set, demand_matrix, max_changeover_time, train_capacity)
@@ -148,12 +181,12 @@ function [demand_score, transfer_graph_digraph, edge_flows] = demandSatisfaction
     demand_score = flow_value / sum(demand_matrix,'all');
 end
 
-function combined_score = geneticObjective(network, params, solution)
-    solution = reshape(solution, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor);
+function combined_score = combinedObjective(network, params, solution)
     [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
     collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
     [demand_score, ~, ~] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
-    combined_score = collision_score + demand_score;
+    destination_score = destinationPenalties(network, traj_set, params.destinations);
+    combined_score = collision_score + demand_score + destination_score;
 end
 
 %% Solution Generation 
@@ -218,9 +251,10 @@ function [solution, traj_set] = greedySolution(network, params, per_train_stall_
             % Test new trajectory set
             collision_score = collisionPenalties(network, new_traj_set, params.min_separation, params.max_speed);
             demand_score = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+            destination_score = destinationPenalties(network, new_traj_set, params.destinations);
 
-            if collision_score + demand_score > round_best_score
-                round_best_score = collision_score + demand_score;
+            if collision_score + demand_score + destination_score > round_best_score
+                round_best_score = collision_score + demand_score + destination_score;
                 stall_timer = tic;
                 round_best_event_set = new_event_set;
                 round_best_traj_set = new_traj_set;
@@ -246,13 +280,16 @@ function [solution, traj_set] = greedySearch(network, params, valid_solutions_su
         else
             new_solution = greedySolution(network, params, solution_stall_time);
         end
-        [traj_set, event_set] = constructTrajectorySet(network, new_solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
-        [new_demand_score, ~, ~] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+        [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
+        collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
+        [demand_score, ~, ~] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+        destination_score = destinationPenalties(network, traj_set, params.destinations);
+        new_score = collision_score + demand_score + destination_score;
 
-        if best_solution_set{2} < new_demand_score
+        if best_solution_set{2} < new_score 
             stall_timer = tic;
-            best_solution_set = {traj_set new_demand_score new_solution};
-            disp(strcat("Best demand satisfaction: ", string(best_solution_set{2} * 100), "%"));
+            best_solution_set = {new_traj_set new_score new_solution};
+            disp(strcat("Best score: ", string(best_solution_set{2})));
         end
 
         solution = best_solution_set{3};
@@ -265,7 +302,7 @@ function [solution, traj_set] = geneticGlobalSearch(network, params)
     nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
     % GA uses a nvars^2 matrix for mutation costing a lot of memory
     % GA wants normalized parameters
-    obj_fun = @(solution) -geneticObjective(network, params, solution + 0.5);
+    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor) + 0.5);
     options = optimoptions('ga', ...
         'Display','diagnose', ...
         'UseParallel', true, ...
@@ -284,7 +321,7 @@ function [solution, traj_set] = particleSwarmSearch(network, params)
     nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
     % GA uses a nvars^2 matrix for mutation costing a lot of memory
     % GA wants normalized parameters
-    obj_fun = @(solution) -geneticObjective(network, params, solution + 0.5);
+    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor) + 0.5);
     options = optimoptions('particleswarm', ...
         'Display','iter', ...
         'UseParallel', true, ...
