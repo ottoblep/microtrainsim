@@ -360,3 +360,58 @@ function [solution, traj_set] = particleSwarmSearch(network, params)
     solution = reshape(X, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor) + 0.5;
     [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
 end
+
+function [solution, traj_set] = refineSolution(network, params, solution, traj_set)
+    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor));
+    nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
+    options = optimoptions('patternsearch', ...
+        'Display','iter', ...
+        'UseParallel', true, ...
+        'InitialMeshSize', 0.1, ...
+        'MeshTolerance', 0.02 ...
+        );
+    X = patternsearch(obj_fun, solution, [], [], [], [], zeros(nvars, 1), ones(nvars, 1), [], options);
+    solution = reshape(X, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor);
+    [traj_set, ~] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
+end
+
+function [solution, traj_set] = repairHeuristic(network, params, solution, traj_set)
+    %% Preturb a solution until collisions disappear
+    n_trains = size(traj_set, 1);
+    n_timesteps = size(traj_set, 3);
+    flawless = false;
+    
+    while ~flawless
+        flawless = true;
+        for i_train = 1:n_trains
+            for j_train = i_train+1:n_trains
+                timestep = 1;
+                while timestep < n_timesteps
+                    distance = trainDistance(network, traj_set, i_train, j_train, timestep);
+
+                    if distance > params.min_separation
+                        guaranteed_safe_time = int32(floor((distance - params.min_separation) / (2 * params.max_speed))) + 1;
+                    else
+                        solution(i_train, :) = solution(i_train, :) + rand(1, 4 * params.n_timesteps / params.interpolation_factor) * 0.05 - 0.025;
+                        solution(i_train, solution(i_train, :) > 1) = 1;
+                        solution(i_train, solution(i_train, :) < 0) = 0;
+                        solution(j_train, :) = solution(i_train, :) + rand(1, 4 * params.n_timesteps / params.interpolation_factor) * 0.05 - 0.025;
+                        solution(j_train, solution(j_train, :) > 1) = 1;
+                        solution(j_train, solution(j_train, :) < 0) = 0;
+
+                        [traj_set(i_train, :, :), ~] = constructTrajectory(network, solution(i_train,:), params.initial_positions(i_train, :), params.initial_speeds(i_train), params.max_accel, params.max_speed, params.interpolation_factor);
+                        [traj_set(j_train, :, :), ~] = constructTrajectory(network, solution(j_train,:), params.initial_positions(j_train, :), params.initial_speeds(j_train), params.max_accel, params.max_speed, params.interpolation_factor);
+
+                        flawless = false;
+                        timestep =  1;
+                        continue;
+                    end
+
+                    timestep = timestep + guaranteed_safe_time;
+                end
+            end
+        end
+    end
+
+    collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed)
+end
