@@ -94,6 +94,18 @@ end
 
 %% Helper Functions
 
+function [edge_idx edge_pos] = nodeToEdgePos(network, node_idx)
+    out_edges = find(network.edge_rows == node_idx);
+    if ~isempty(out_edges)
+        edge_idx = out_edges(1);
+        edge_pos = 0;
+    else
+        in_edges = find(network.edge_cols == node_idx);
+        edge_idx = in_edges(1);
+        edge_pos = 1;
+    end
+end
+
 function adj = randomPlanarGraph(n)
     % adj = spalloc(n, n, 6*n*n); % for finite planar graphs the average degree is strictly less than 6
     del = delaunay(randn(n, 2));
