@@ -180,7 +180,7 @@ function destination_score = destinationPenalties(network, traj_set, destination
         dist1 = i_remaining_backward_length + network.all_shortest_paths(i_node_backward, destinations(i_train));
         dist2 = i_remaining_forward_length + network.all_shortest_paths(i_node_forward, destinations(i_train));
         distance = min([dist1, dist2]);
-        destination_score = destination_score - distance;
+        destination_score = destination_score - distance / 10;
     end
 end
 
