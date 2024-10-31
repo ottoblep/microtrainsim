@@ -276,9 +276,9 @@ function [solution, traj_set] = greedySearch(network, params, valid_solutions_su
     best_solution_set = {[] -Inf [] []}; % traj_set, demand_score, transfer_graph_digraph, solution,
     while toc(stall_timer) < overall_stall_time
         if valid_solutions_suffice
-            new_solution = greedyValidSolution(network, params, solution_stall_time);
+            solution = greedyValidSolution(network, params, solution_stall_time);
         else
-            new_solution = greedySolution(network, params, solution_stall_time);
+            solution = greedySolution(network, params, solution_stall_time);
         end
         [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
         collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
@@ -288,7 +288,7 @@ function [solution, traj_set] = greedySearch(network, params, valid_solutions_su
 
         if best_solution_set{2} < new_score 
             stall_timer = tic;
-            best_solution_set = {new_traj_set new_score new_solution};
+            best_solution_set = {traj_set new_score solution};
             disp(strcat("Best score: ", string(best_solution_set{2})));
         end
 
