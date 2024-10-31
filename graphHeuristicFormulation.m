@@ -18,11 +18,22 @@ function [network, params] = generateEnvironment()
     %% Network
     adj = randomPlanarGraph(5);
     network.adjacency_matrix = triu((adj + adj') * 1000, 1);
-    network.adjacency_matrix = [ 0 0 1000 0 0;
-                                 0 0 1000 0 0;
-                                 0 0 0 1000 1000;
-                                 0 0 0 0 0;
-                                 0 0 0 0 0;];
+    network.adjacency_matrix = [ 0 0 0 0 0 0 1000 0 0 0 0 0 0 0 0;
+                                 0 0 0 0 0 0 1000 1000 0 0 0 0 0 0 0;
+                                 0 0 0 0 0 0 0 1000 0 0 0 0 0 0 0;
+                                 0 0 0 0 0 0 1000 0 0 0 0 0 0 0 0;
+                                 0 0 0 0 0 0 0 1000 0 0 0 0 0 0 0;
+                                 0 0 0 0 0 0 1000 0 0 0 0 0 0 0 0; 
+                                 0 0 0 0 0 0 0 1000 0 1000 1000 0 0 0 0;
+                                 0 0 0 0 0 0 0 0 1000 0 1000 1000 0 0 0;
+                                 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0;
+                                 0 0 0 0 0 0 0 0 0 0 1000 0 0 0 0;
+                                 0 0 0 0 0 0 0 0 0 0 0 1000 1000 1000 1000;
+                                 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0;
+                                 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0;
+                                 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0;
+                                 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0;
+                                 ];
     connection_indexes = find(network.adjacency_matrix);
     network.adjacency_matrix(connection_indexes) = network.adjacency_matrix(connection_indexes) .* (randi([1,3],size(connection_indexes)));
     [network.edge_rows, network.edge_cols, network.edge_values] = find(network.adjacency_matrix);
@@ -40,7 +51,7 @@ function [network, params] = generateEnvironment()
     %% Parameters
     params.n_timesteps = 8640; % 10s timesteps for one whole day, must be divisible my interpolation factor
     params.interpolation_factor = 160; % Support points for acceleration and switch direction curves for every n timesteps (not linearly spaced)
-    params.n_trains = 3;
+    params.n_trains = 12;
     params.min_separation = 100; % m
     params.max_speed = 1.11; % m/10s 200km/h
     params.max_accel = 46.27; % m/(10s)² 0-100kmh in 1m
@@ -64,12 +75,15 @@ function [network, params] = generateEnvironment()
     %params.destinations = randi([1,size(network.adjacency_matrix)], params.n_trains, 1);
 
     % Unique node initial position
-    params.initial_positions(:, 1) = [1 2 3];
-    params.initial_positions(:, 2) = [0 0 1];
-    params.initial_positions(:, 3) = [1 1 -1];
+    start_nodes = [1 2 3 4 6 10 5 9 12 13 14 15];
+    for i_train = 1:params.n_trains
+        [params.initial_positions(i_train, 1), params.initial_positions(i_train, 2)] = nodeToEdgePos(network, start_nodes(i_train));
+    end
+    params.initial_positions(:, 3) = ones(params.n_trains, 1);
     params.initial_speeds = zeros(params.n_trains, 1);
 
-    params.destinations = [5 4 2];
+    params.destinations = [13 14 15 5 9 12 4 6 10 1 2 3];
+    assert(numel(params.destinations) == params.n_trains);
 end
 
 %% Solution Construction
@@ -338,7 +352,7 @@ function [solution, traj_set] = particleSwarmSearch(network, params)
         'Display','iter', ...
         'UseParallel', true, ...
         'MaxStallIterations', 25, ...
-        'SwarmSize', 1000, ...
+        'SwarmSize', 100, ...
         'InitialSwarmSpan', 1 ...
         );
     [X, fval, exitflag, output, scores] = particleswarm(obj_fun, nvars, -0.5 * ones(nvars, 1), 0.5 * ones(nvars, 1), options);
