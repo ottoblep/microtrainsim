@@ -4,11 +4,19 @@ function greedyHeuristicFormulation()
     csvwrite("network.csv", network.adjacency_matrix);
     csvwrite("demands.csv", params.demand_matrix);
 
-    %[solution, traj_set] = greedySearch(network, params, true, 2, 2);
+    [solution, traj_set] = greedySearch(network, params, true, 10, 1);
     %disp("---");
-    %[solution, traj_set] = greedySearch(network, params, false, 10, 0.01);
+    %[solution, traj_set] = greedySearch(network, params, false, 10, 2);
     %[solution, traj_set] = geneticGlobalSearch(network, params);
-    [solution, traj_set] = particleSwarmSearch(network, params);
+    %[solution, traj_set] = particleSwarmSearch(network, params);
+
+    %solution = randomSolution(params);
+    %[traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
+    %[solution, traj_set] = repairHeuristic(network, params, solution, traj_set);
+    [solution, traj_set] = refineSolution(network, params, solution, traj_set);
+
+    collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed)
+    destination_score = destinationPenalties(network, traj_set, params.destinations)
 
     csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
     csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
@@ -50,7 +58,7 @@ function [network, params] = generateEnvironment()
 
     %% Parameters
     params.n_timesteps = 8640; % 10s timesteps for one whole day, must be divisible my interpolation factor
-    params.interpolation_factor = 160; % Support points for acceleration and switch direction curves for every n timesteps (not linearly spaced)
+    params.interpolation_factor = 864; % Support points for acceleration and switch direction curves for every n timesteps (not linearly spaced)
     params.n_trains = 12;
     params.min_separation = 100; % m
     params.max_speed = 1.11; % m/10s 200km/h
@@ -164,7 +172,7 @@ function collision_score = collisionPenalties(network, traj_set, min_separation,
 end
 
 function destination_score = destinationPenalties(network, traj_set, destinations)
-    %% Penalizes train's distance from destination at the end of the trajectory
+    %% Penalizes train's distance from destination and speed>0 at the end of the trajectory
     % destinations dimensions (1, n_nodes)
     % destinations values (destination_node_idx)
     destination_score = 0;
@@ -182,6 +190,7 @@ function destination_score = destinationPenalties(network, traj_set, destination
         distance = min([dist1, dist2]);
         destination_score = destination_score - distance / 10;
     end
+
 end
 
 function [demand_score, transfer_graph_digraph, edge_flows] = demandSatisfaction(network, event_set, demand_matrix, max_changeover_time, train_capacity)
@@ -210,9 +219,10 @@ end
 function combined_score = combinedObjective(network, params, solution)
     [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
     collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
-    [demand_score, ~, ~] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+    %[demand_score, ~, ~] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
     destination_score = destinationPenalties(network, traj_set, params.destinations);
-    combined_score = collision_score + demand_score + destination_score;
+    %combined_score = collision_score + demand_score + destination_score;
+    combined_score = collision_score + destination_score;
 end
 
 %% Solution Generation 
@@ -276,11 +286,11 @@ function [solution, traj_set] = greedySolution(network, params, per_train_stall_
 
             % Test new trajectory set
             collision_score = collisionPenalties(network, new_traj_set, params.min_separation, params.max_speed);
-            demand_score = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+            %demand_score = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
             destination_score = destinationPenalties(network, new_traj_set, params.destinations);
 
-            if collision_score + demand_score + destination_score > round_best_score
-                round_best_score = collision_score + demand_score + destination_score;
+            if collision_score + destination_score > round_best_score
+                round_best_score = collision_score + destination_score;
                 stall_timer = tic;
                 round_best_event_set = new_event_set;
                 round_best_traj_set = new_traj_set;
@@ -308,9 +318,9 @@ function [solution, traj_set] = greedySearch(network, params, valid_solutions_su
         end
         [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
         collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
-        [demand_score, ~, ~] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
+        %[demand_score, ~, ~] = demandSatisfaction(network, event_set, params.demand_matrix, params.max_changeover_time, params.train_capacity);
         destination_score = destinationPenalties(network, traj_set, params.destinations);
-        new_score = collision_score + demand_score + destination_score;
+        new_score = collision_score + destination_score;
 
         if best_solution_set{2} < new_score 
             stall_timer = tic;

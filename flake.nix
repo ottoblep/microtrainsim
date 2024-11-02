@@ -1,5 +1,5 @@
 {
-  description = "Nix Dev Shells";
+  description = "microtrainsim flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
@@ -18,8 +18,8 @@
     in
     {
       # Utilized by `nix develop`
-      devShell.x86_64-linux =
-        pkgs.mkShell {
+      devShells.x86_64-linux = {
+        default = pkgs.mkShell {
           buildInputs = (with nix-matlab.packages.x86_64-linux; [
             matlab
             matlab-mlint
@@ -41,5 +41,15 @@
             ]))
           ];
         };
+
+        cpp = pkgs.mkShell {
+            packages = with pkgs; [
+              # C++ Compiler is already part of stdenv
+              boost
+              catch2
+              cmake
+            ];
+          };
+      };
     };
 }
