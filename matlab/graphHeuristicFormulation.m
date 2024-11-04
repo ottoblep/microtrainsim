@@ -306,12 +306,12 @@ end
 
 %% Search Methods
 
-function [solution, traj_set] = greedySearch(network, params, valid_solutions_suffice, overall_stall_time, solution_stall_time)
+function [solution, traj_set] = greedySearch(network, params, only_valid_solutions, overall_stall_time, solution_stall_time)
     %% Generate greedy solutions then evaluate demand score
     stall_timer = tic;
     best_solution_set = {[] -Inf [] []}; % traj_set, demand_score, transfer_graph_digraph, solution,
     while toc(stall_timer) < overall_stall_time
-        if valid_solutions_suffice
+        if only_valid_solutions
             solution = greedyValidSolution(network, params, solution_stall_time);
         else
             solution = greedySolution(network, params, solution_stall_time);
