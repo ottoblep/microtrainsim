@@ -1,4 +1,4 @@
-function [traj, events] = constructTrajectory(network, solution, initial_position, initial_speed, max_accel, max_speed, interpolation_factor)
+function [traj, events, speeds] = constructTrajectory(network, solution, initial_position, initial_speed, max_accel, max_speed, interpolation_factor)
     %% Constructs a single train trajectory on the graph
 
     % Solution variables are a sparse representation of the acceleration and switch_direction curves.
@@ -16,6 +16,8 @@ function [traj, events] = constructTrajectory(network, solution, initial_positio
     % trajectory values (edge 0-n, position on edge 0-1, train orientation on edge -1, 1)
     % events dimensions (2, n)
     % events values (presence_at_node, timestep)
+    % speeds dimensions (timestep)
+    % speeds values (speed)
 
     n_solution_points = size(solution,2) / 4;
     n_timesteps = n_solution_points * interpolation_factor;
