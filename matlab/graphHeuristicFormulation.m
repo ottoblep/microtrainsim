@@ -1,14 +1,11 @@
 function greedyHeuristicFormulation()
-    [network, params] = generateEnvironment();
+    [network, params] = generateEnvironment("crossover");
 
-    csvwrite("network.csv", network.adjacency_matrix);
-    csvwrite("demands.csv", params.demand_matrix);
-
-    [solution, traj_set] = greedySearch(network, params, true, 10, 1);
+    %[solution, traj_set] = greedySearch(network, params, true, 30, 0.01);
     %disp("---");
-    %[solution, traj_set] = greedySearch(network, params, false, 10, 2);
+    [solution, traj_set] = greedySearch(network, params, false, 15, 0.1);
     %[solution, traj_set] = geneticGlobalSearch(network, params);
-    %[solution, traj_set] = particleSwarmSearch(network, params);
+    %[solution, falsetraj_set] = particleSwarmSearch(network, params);
 
     %solution = randomSolution(params);
     %[traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
@@ -18,80 +15,45 @@ function greedyHeuristicFormulation()
     collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed)
     destination_score = destinationPenalties(network, traj_set, params.destinations)
 
+    csvwrite("network.csv", network.adjacency_matrix);
     csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
     csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
 end
 
-function [network, params] = generateEnvironment()
+function [network, params] = generateEnvironment(network_template)
     %% Network
-    adj = randomPlanarGraph(5);
-    network.adjacency_matrix = triu((adj + adj') * 1000, 1);
-    network.adjacency_matrix = [ 0 0 0 0 0 0 1000 0 0 0 0 0 0 0 0;
-                                 0 0 0 0 0 0 1000 1000 0 0 0 0 0 0 0;
-                                 0 0 0 0 0 0 0 1000 0 0 0 0 0 0 0;
-                                 0 0 0 0 0 0 1000 0 0 0 0 0 0 0 0;
-                                 0 0 0 0 0 0 0 1000 0 0 0 0 0 0 0;
-                                 0 0 0 0 0 0 1000 0 0 0 0 0 0 0 0; 
-                                 0 0 0 0 0 0 0 1000 0 1000 1000 0 0 0 0;
-                                 0 0 0 0 0 0 0 0 1000 0 1000 1000 0 0 0;
-                                 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0;
-                                 0 0 0 0 0 0 0 0 0 0 1000 0 0 0 0;
-                                 0 0 0 0 0 0 0 0 0 0 0 1000 1000 1000 1000;
-                                 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0;
-                                 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0;
-                                 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0;
-                                 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0;
-                                 ];
-    connection_indexes = find(network.adjacency_matrix);
-    network.adjacency_matrix(connection_indexes) = network.adjacency_matrix(connection_indexes) .* (randi([1,3],size(connection_indexes)));
+    network.adjacency_matrix = readmatrix(strcat("../network_templates/", network_template, ".csv"));
+    network.station_nodes = readmatrix(strcat("../network_templates/", network_template, "_stations.csv"));
     [network.edge_rows, network.edge_cols, network.edge_values] = find(network.adjacency_matrix);
-
     network.adjacent_edge_list = {};
     for node = 1:size(network.adjacency_matrix,1)
         network.adjacent_edge_list{node} = find((network.edge_rows == node) | (network.edge_cols == node));
     end
-
-    %% All shortest path pairs
+    % All shortest path pairs
     tmp_adj = network.adjacency_matrix;
     tmp_adj(tmp_adj==0) = Inf;
     network.all_shortest_paths = distances(graph(tmp_adj,'upper'), 'Method', 'positive');
 
-    %% Parameters
-    params.n_timesteps = 8640; % 10s timesteps for one whole day, must be divisible my interpolation factor
-    params.interpolation_factor = 864; % Support points for acceleration and switch direction curves for every n timesteps (not linearly spaced)
-    params.n_trains = 12;
+    %% Simulation Parameters
+    params.n_timesteps = 360; % 10s timesteps for three hours, must be divisible my interpolation factor
+    params.interpolation_factor = 10; % Support points for acceleration and switch direction curves for every n timesteps (not linearly spaced)
     params.min_separation = 100; % m
-    params.max_speed = 1.11; % m/10s 200km/h
-    params.max_accel = 46.27; % m/(10s)² 0-100kmh in 1m
+    params.max_speed = 83; % m/10s = 20km/h
+    params.max_accel = 46.27; % m/(10s)² = 0-100kmh in 1m
     params.max_changeover_time = 1440; % 4hrs
     params.train_capacity = 400; % 400 Passengers
-
-    assert(size(network.adjacency_matrix,1) > params.n_trains); % Trains can start at a unique node
     assert(mod(params.n_timesteps, params.interpolation_factor) == 0);
 
-    params.demand_matrix = randi(1000, size(network.adjacency_matrix,1));
-    params.demand_matrix(logical(eye(size(params.demand_matrix)))) = 0;
-    params.demand_matrix(randperm(numel(params.demand_matrix), round(numel(params.demand_matrix)/2))) = 0; % make demand matrix more sparse
-    %params.demand_matrix = [ 0 20;
-    %                         0 0];
-
-    % Random initial position
-    %params.initial_positions = randi([1,length(network.edge_values)], params.n_trains, 3);
-    %params.initial_positions(:,2) = rand(params.n_trains,1);
-    %params.initial_positions(:,3) = randi([0,1],params.n_trains,1) * 2 - 1;
-    %params.initial_speeds = (rand(params.n_trains,1) * 2 - 1) * params.max_speed;
-    %params.destinations = randi([1,size(network.adjacency_matrix)], params.n_trains, 1);
-
-    % Unique node initial position
-    start_nodes = [1 2 3 4 6 10 5 9 12 13 14 15];
+    %% Train Parameters
+    start_nodes = readmatrix(strcat("../network_templates/", network_template, "_start_nodes.csv"));
+    params.n_trains = numel(start_nodes);
     for i_train = 1:params.n_trains
         [params.initial_positions(i_train, 1), params.initial_positions(i_train, 2)] = nodeToEdgePos(network, start_nodes(i_train));
     end
     params.initial_positions(:, 3) = ones(params.n_trains, 1);
     params.initial_speeds = zeros(params.n_trains, 1);
 
-    params.destinations = [13 14 15 5 9 12 4 6 10 1 2 3];
-    assert(numel(params.destinations) == params.n_trains);
+    params.destinations = readmatrix(strcat("../network_templates/", network_template, "_destinations.csv"));
 end
 
 %% Solution Construction
@@ -247,7 +209,7 @@ function solution = greedyValidSolution(network, params, stall_time)
             collision_score = collisionPenalties(network, new_traj_set, params.min_separation, params.max_speed);
 
             if toc(stall_timer) > stall_time
-                disp("Failed to construct a collision free solution. Restarting ...");
+                %disp("Failed to construct a collision free solution. Restarting ...");
                 new_solution = rand(1, 4 * params.n_timesteps / params.interpolation_factor);
                 new_traj_set = [];
                 new_traj_set(1,:,:) = constructTrajectory(network, new_train_solution, params.initial_positions(1,:), params.initial_speeds(1), params.max_accel, params.max_speed, params.interpolation_factor);
