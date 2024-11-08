@@ -32,13 +32,15 @@ function [network, params] = generateEnvironment(network_template)
 
     %% Simulation Parameters
     params.n_timesteps = 200; % 10s timesteps
-    params.interpolation_factor = 4; % Support points for acceleration and switch direction curves for every n timesteps (not linearly spaced)
+    params.n_acceleration_vars = params.n_timesteps / 4; % Support points for acceleration
     params.min_separation = 100; % m
     params.max_speed = 83; % m/10s = 20km/h
     params.max_accel = 46.27; % m/(10s)² = 0-100kmh in 1m
     params.max_changeover_time = 1440; % 4hrs
     params.train_capacity = 400; % 400 Passengers
     params.dwell_timesteps = 12; % 2 minutes
+    params.n_switch_vars = params.max_speed * params.n_timesteps / min(tmp_adj); % Bounded by max possible edge changes
+
     assert(mod(params.n_timesteps, params.interpolation_factor) == 0);
 
     %% Train Parameters
@@ -56,21 +58,19 @@ end
 
 %% Solution Construction
 
-function [traj_set, event_set, speed_set] = constructTrajectorySet(network, solution, initial_positions, initial_speeds, max_accel, max_speed, interpolation_factor)
+function [traj_set, event_set] = constructTrajectorySet(network, params, solution)
     %% Constructs a set of train trajectories on the graph
-    % solution dimensions (n_trains, 4 * timestep / interpolation_factor)
+    % solution dimensions (n_trains, 2 * n_acceleration_vars + n_switch_vars)
     % initial position dimensions (n_trains, 3)
     % initial speed dimensions (n_trains)
     % traj_set dimensions (n_trains, 3, timestep)
     % event_set dimensions (3, n))
     % event_set values (presence_at_node, timestep, train)
     n_trains = size(solution,1);
-    n_timesteps = size(solution,2) * interpolation_factor / 4;
     event_set = [];
-    traj_set = zeros(n_trains, 3, n_timesteps);
-    speed_set = zeros(n_trains, n_timesteps);
+    traj_set = zeros(n_trains, 3, params.n_timesteps);
     for i_train = 1:n_trains
-        [traj_set(i_train, :, :), new_events, speed_set(i_train,:)] = constructTrajectory(network, solution(i_train,:), initial_positions(i_train, :), initial_speeds(i_train), max_accel, max_speed, interpolation_factor);
+        [traj_set(i_train, :, :), new_events] = constructTrajectory(network, params, solution(i_train,:), initial_positions(i_train, :), initial_speeds(i_train));
         new_events(3,:) = i_train;
         event_set = cat(2, event_set, new_events);
     end
@@ -155,30 +155,6 @@ function destination_score = destinationPenalties(network, traj_set, destination
 
 end
 
-function stop_score = stopPenalties(network, traj_set, speed_set, planned_stops, dwell_timesteps)
-    %% Rewards trains stopping at planned edges
-    % planned_stops dimensions (n, 3)
-    % planned_stops values (train, fraction of total time, edge)
-
-    % reward each timestep that a train spends on a planned station edge
-    %   - weighted by speed (lower is better)
-    %   - weighted by time difference to scheduled stop time
-    %   - limited by minimum dwell time
-    stop_score = 0;
-    n_timesteps = size(traj_set, 3);
-
-    for i_stop = 1:numel(size(planned_stops,1))
-        i_train = planned_stops(i_stop, 1);
-
-        steps_on_edge_idxs = find(traj_set(i_train, 1, :) == planned_stops(i_stop, 3));
-        if isempty(steps_on_edge_idxs)
-            continue;
-        end
-
-        stop_score = stop_score + sum(maxk(exp(-abs(speed_set(i_train, steps_on_edge_idxs))) * exp(-abs(steps_on_edge_idxs - (planned_stops(i_stop, 2) * n_timesteps))), dwell_timesteps));
-    end
-end
-
 function [demand_score, transfer_graph_digraph, edge_flows] = demandSatisfaction(network, event_set, demand_matrix, max_changeover_time, train_capacity)
     %% Evaluates satisfied node-to-node demand for a given set of arrival/departure timesteps 
     % event_set dimenstions (3, n))
@@ -203,22 +179,20 @@ function [demand_score, transfer_graph_digraph, edge_flows] = demandSatisfaction
 end
 
 function combined_score = combinedObjective(network, params, solution)
-    [traj_set, event_set, speed_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
+    [traj_set, event_set] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
     combined_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed);
     combined_score = combined_score + destinationPenalties(network, traj_set, params.destinations);
-    combined_score = combined_score + stopPenalties(network, traj_set, speed_set, params.planned_stops, params.dwell_timesteps);
 end
 
 %% Solution Generation 
 
 function solution = randomSolution(params)
-    solution = rand(params.n_trains, 4 * params.n_timesteps / params.interpolation_factor);
+    solution = rand(params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars);
 end
 
 function [solution, traj_set, round_best_score] = greedySolution(network, params, per_train_stall_time)
     %% Place each train greedily considering whole objective
     traj_set = [];
-    speed_set = [];
     event_set = [];
     solution = [];
 
@@ -226,38 +200,33 @@ function [solution, traj_set, round_best_score] = greedySolution(network, params
         stall_timer = tic;
         round_best_traj_set = [];
         round_best_event_set = [];
-        round_best_speed_set = [];
         round_best_train_solution = [];
         round_best_score = -Inf;
 
         while toc(stall_timer) < per_train_stall_time
             % Generate new trajectory
-            new_train_solution = rand(1, 4 * params.n_timesteps / params.interpolation_factor);
-            [new_traj, new_events, new_speeds] = constructTrajectory(network, new_train_solution, params.initial_positions(i_train,:), params.initial_speeds(i_train), params.max_accel, params.max_speed, params.interpolation_factor);
+            new_train_solution = rand(params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars);
+            [new_traj, new_events] = constructTrajectory(network, new_train_solution, params.initial_positions(i_train,:), params.initial_speeds(i_train), params.max_accel, params.max_speed, params.interpolation_factor);
 
             % Add new trajectory to old set
             new_traj_set = cat(1, traj_set, reshape(new_traj, 1, size(new_traj,1), size(new_traj,2)));
-            new_speed_set = cat(1, speed_set, new_speeds);
             new_events(3,:) = i_train;
             new_event_set = cat(2, event_set, new_events);
 
             % Test new trajectory set
             score = collisionPenalties(network, new_traj_set, params.min_separation, params.max_speed);
             score = score + destinationPenalties(network, new_traj_set, params.destinations);
-            score = score + stopPenalties(network, new_traj_set, new_speed_set, params.planned_stops, params.dwell_timesteps);
 
             if score > round_best_score
                 round_best_score = score;
                 stall_timer = tic;
                 round_best_train_solution = new_train_solution;
                 round_best_traj_set = new_traj_set;
-                round_best_speed_set = new_speed_set;
                 round_best_event_set = new_event_set;
             end
         end
 
         traj_set = round_best_traj_set;
-        speed_set = round_best_speed_set;
         event_set = round_best_event_set;
         solution = cat(1, solution, round_best_train_solution);
     end
@@ -288,7 +257,7 @@ function [solution, traj_set] = geneticGlobalSearch(network, params)
     nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
     % GA uses a nvars^2 matrix for mutation costing a lot of memory
     % GA wants normalized parameters
-    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor) + 0.5);
+    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, ) + 0.5);
     options = optimoptions('ga', ...
         'Display','diagnose', ...
         'UseParallel', true, ...
@@ -298,7 +267,7 @@ function [solution, traj_set] = geneticGlobalSearch(network, params)
         );
     [X, fval, exitflag, output, population, scores] = ga(obj_fun, nvars, [], [], [], [], -0.5 * ones(nvars, 1), 0.5 * ones(nvars, 1), [], options);
     % Save result
-    solution = reshape(X, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor) + 0.5;
+    solution = reshape(X, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars) + 0.5;
     [traj_set, ~, ~] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
 end
 
@@ -317,7 +286,7 @@ function [solution, traj_set] = particleSwarmSearch(network, params)
         );
     [X, fval, exitflag, output, scores] = particleswarm(obj_fun, nvars, -0.5 * ones(nvars, 1), 0.5 * ones(nvars, 1), options);
     % Save result
-    solution = reshape(X, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor) + 0.5;
+    solution = reshape(X, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars) + 0.5;
     [traj_set, ~, ~] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
 end
 
@@ -331,6 +300,6 @@ function [solution, traj_set] = refineSolution(network, params, solution, traj_s
         'MeshTolerance', 0.02 ...
         );
     X = patternsearch(obj_fun, solution, [], [], [], [], zeros(nvars, 1), ones(nvars, 1), [], options);
-    solution = reshape(X, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor);
+    solution = reshape(X, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars);
     [traj_set, ~, ~] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
 end
