@@ -1,4 +1,4 @@
-timesteps = 15;
+timesteps = 150;
 interp_steps = 5;
 points = rand(1, interp_steps) * timesteps;
 vals = rand(1, interp_steps);
@@ -20,7 +20,6 @@ position = x_0 + cumsum(speeds);
 
 initial_arrival_time = round(0.5 * timesteps);
 
-stop_position = position(initial_arrival_time);
 approach_direction = sign(speeds(initial_arrival_time));
 
 pre_stop_timesteps = 1:initial_arrival_time;
@@ -34,7 +33,14 @@ approach_timesteps = first_approach_idx:initial_arrival_time;
 % k*v(n) - a*k*(k+1)/2 
 % maximum (stop point) at (v-a/2)/a
 
-start_braking_timestep = 5;
+% Select timestep to start braking (will always overshoot slightly)
+v = speeds(approach_timesteps);
+k = floor(v./a_max);
+d_brake = k .* v - a_max * k .* (k+1) * 0.5;
+d = abs(position(approach_timesteps) - position(initial_arrival_time));
+start_braking_timestep = first_approach_idx + find(d < d_brake, 1, 'first') + 1;
+
+% Calculate braking curve
 n_full_braking_steps = floor(abs(speeds(start_braking_timestep-1))/a_max);
 if n_full_braking_steps + 1 > timesteps - start_braking_timestep
     error("Not enough time to brake.");
@@ -45,7 +51,7 @@ end_braking_timestep = start_braking_timestep + n_full_braking_steps;
 scatter(initial_arrival_time, position(initial_arrival_time),'DisplayName','initial arrival time');
 plot(1:timesteps, position,'DisplayName','position old');
 
-% Modify acceleration curve
+% Adjust acceleration values
 acceleration(start_braking_timestep:end_braking_timestep - 1) = -approach_direction * a_max;
 acceleration(end_braking_timestep) = -approach_direction * a_last_step;
 if end_braking_timestep + dwell_time > timesteps
@@ -61,7 +67,7 @@ speeds = v_init + cumsum(acceleration);
 position = x_0 + cumsum(speeds);
 
 v_error = speeds(end_braking_timestep)
-p_error = position(end_braking_timestep) - stop_position
+p_relative_error = approach_direction * (position(end_braking_timestep) - position(initial_arrival_time))
 
 scatter(first_approach_idx, position(first_approach_idx),'DisplayName','first approach idx');
 scatter(start_braking_timestep, position(start_braking_timestep), 'DisplayName','start braking timestep');
