@@ -1,14 +1,14 @@
-timesteps = 20;
+timesteps = 100;
 interp_steps = 3;
 points = rand(1, interp_steps) * timesteps;
 vals = rand(1, interp_steps);
-a_max = 0.1;
-v_max = 1;
+a_max = 0.01;
+v_max =  5;
 x_0 = rand(1,1);
 v_init = 2 * (rand(1,1) - 0.5) * v_max;
 dwell_time = round(0.2 * timesteps);
 
-clf;
+close all;
 hold on;
 
 acceleration = (interpolateSolutionCurve(points, vals, 1:timesteps) * 2 - 1) * a_max;
@@ -17,16 +17,9 @@ acceleration(speeds>v_max & acceleration>0) = 0;
 acceleration(speeds<-v_max & acceleration<0) = 0;
 speeds = v_init + cumtrapz(acceleration);
 position = x_0 + cumtrapz(speeds);
-plot(1:timesteps, position,'DisplayName','position\_old');
+
 
 initial_arrival_time = round(0.5 * timesteps);
-scatter(initial_arrival_time, position(initial_arrival_time),'DisplayName','initial\_arrival\_time');
-
-% Braking at max acceleration until standstil leads to a quadratic position curve
-% We calculate the timestep to start braking so the train comes to a halt exactly at the stop 
-% Formula for the start of braking
-% speed = a_max * sqrt(2*d / a_max)
-% d distance to stop, speed current_speed, a_max acceleration
 
 stop_position = position(initial_arrival_time);
 approach_direction = sign(speeds(initial_arrival_time));
@@ -38,18 +31,46 @@ if isempty(first_approach_idx)
 end
 approach_timesteps = first_approach_idx:initial_arrival_time;
 
-% Determine ideal start of braking
-d = abs(position(approach_timesteps) - stop_position);
-start_braking_timestep = first_approach_idx - 1 + find(d>=0.5 * speeds(approach_timesteps).^2 / a_max, 1, 'last');
+% Determine latest possible start of braking
+%start_braking_timestep = first_approach_idx - 1 + find(d>=0.5 * speeds(approach_timesteps).^2 / a_max, 1, 'last');
+real_distance_from_stop = abs(position(approach_timesteps) - stop_position);
+
+% Formula for distance covered under k braking steps
+% k*v(n) - a*k*(k+1)/2 
+% Speed is discontinuous so we calculate distances for all possible braking starts
+k = numel(approach_timesteps):-1:1;
+distances_covered = (k .* speeds(k) - k .* (k+1) * 0.5 * a_max);
+
+plot(distances_covered,'DisplayName','stop distance');
+plot(real_distance_from_stop,'DisplayName','distance left');
+legend();
+
+n_braking_timesteps = find(real_distance_from_stop >= distances_covered, 1, 'last');
+
+if isempty(n_braking_timesteps)
+    warning("Did not find breaking timesteps.");
+end
+
+start_braking_timestep = first_approach_idx + n_braking_timesteps;
+
+figure(); hold on;
+scatter(initial_arrival_time, position(initial_arrival_time),'DisplayName','initial\_arrival\_time');
 scatter(start_braking_timestep, position(start_braking_timestep), 'DisplayName','start\_braking\_timestep');
-% Pessimistic rounding for discretization error
-new_arrival_time = start_braking_timestep + ceil(abs(speeds(start_braking_timestep) / a_max)) + 1;
-exact_acceleration = abs(speeds(start_braking_timestep)) / (abs(new_arrival_time - start_braking_timestep - 1));
+plot(1:timesteps, position,'DisplayName','position\_old');
+
+% % Determine duration and amount of braking for perfect approach
+new_arrival_time = start_braking_timestep + n_braking_timesteps + 1;
+exact_acceleration = abs(speeds(start_braking_timestep)) / n_braking_timesteps;
 
 % Modify acceleration curve for ideal approach
 acceleration(start_braking_timestep + 1:new_arrival_time - 1) = -approach_direction * exact_acceleration;
-acceleration(new_arrival_time:new_arrival_time + dwell_time) = 0;
-speeds = v_init + cumtrapz(acceleration);1
+if new_arrival_time + dwell_time > timesteps
+    acceleration(new_arrival_time:timesteps) = 0;
+else
+    acceleration(new_arrival_time:new_arrival_time + dwell_time) = 0;
+end
+% Recalculate positions
+speeds = v_init + cumtrapz(acceleration);
 acceleration(speeds>v_max & acceleration>0) = 0;
 acceleration(speeds<-v_max & acceleration<0) = 0;
 speeds = v_init + cumtrapz(acceleration);
@@ -57,9 +78,8 @@ speeds = v_init + cumtrapz(acceleration);
 %assert(all(abs(diff(speeds)) < a_max));
 position = x_0 + cumtrapz(speeds);
 
-v_error = speeds(new_arrival_time)
-p_error = position(new_arrival_time) - stop_position
-startpoint_error = min(abs(0.5 * speeds(approach_timesteps).^2 / a_max - d))
+v_error = speeds(new_arrival_time + 1)
+p_error = position(new_arrival_time + 1) - stop_position
 
 scatter(first_approach_idx, position(first_approach_idx),'DisplayName','first\_approach\_idx');
 
