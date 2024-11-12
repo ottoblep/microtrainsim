@@ -67,15 +67,15 @@ function [traj_set, event_set] = constructTrajectorySet(network, params, solutio
     % initial position dimensions (n_trains, 3)
     % initial speed dimensions (n_trains)
     % traj_set dimensions (n_trains, 3, timestep)
-    % event_set dimensions (3, n))
-    % event_set values (presence_at_node, timestep, train)
+    % event_set dimensions (n, 3))
+    % event_set values (train, timestep, presence_at_node)
     n_trains = size(solution,1);
     event_set = [];
     traj_set = zeros(n_trains, 3, params.n_timesteps);
     for i_train = 1:n_trains
         [traj_set(i_train, :, :), new_events] = constructTrajectory(network, params, solution(i_train,:), params.initial_positions(i_train, :), params.initial_speeds(i_train));
-        new_events(3,:) = i_train;
-        event_set = cat(2, event_set, new_events);
+        new_events(:, 1) = i_train;
+        event_set = cat(1, event_set, new_events);
     end
 end
 
@@ -212,8 +212,8 @@ function [solution, traj_set, round_best_score] = greedySolution(network, params
 
             % Add new trajectory to old set
             new_traj_set = cat(1, traj_set, reshape(new_traj, 1, size(new_traj,1), size(new_traj,2)));
-            new_events(3,:) = i_train;
-            new_event_set = cat(2, event_set, new_events);
+            new_events(:, 1) = i_train;
+            new_event_set = cat(1, event_set, new_events);
 
             % Test new trajectory set
             score = collisionPenalties(network, new_traj_set, params.min_separation, params.max_speed);
@@ -270,7 +270,7 @@ function [solution, traj_set] = geneticGlobalSearch(network, params)
     [X, fval, exitflag, output, population, scores] = ga(obj_fun, nvars, [], [], [], [], -0.5 * ones(nvars, 1), 0.5 * ones(nvars, 1), [], options);
     % Save result
     solution = reshape(X, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars) + 0.5;
-    [traj_set, ~, ~] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
+    [traj_set, ~] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
 end
 
 function [solution, traj_set] = particleSwarmSearch(network, params)
@@ -289,7 +289,7 @@ function [solution, traj_set] = particleSwarmSearch(network, params)
     [X, fval, exitflag, output, scores] = particleswarm(obj_fun, nvars, -0.5 * ones(nvars, 1), 0.5 * ones(nvars, 1), options);
     % Save result
     solution = reshape(X, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars) + 0.5;
-    [traj_set, ~, ~] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
+    [traj_set, ~] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
 end
 
 function [solution, traj_set] = refineSolution(network, params, solution, traj_set)
