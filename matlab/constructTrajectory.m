@@ -1,4 +1,4 @@
-function [traj, events] = constructTrajectory(network, params, solution, initial_position, initial_speed)
+function [traj,arrival_events] = constructTrajectory(network, params, solution, initial_position, initial_speed)
     %% Constructs a single train trajectory on the graph
 
     % Acceleration vars are a sparse representation of the acceleration curves.
@@ -23,15 +23,14 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
     % trajectory dimensions (3, timestep)
     % trajectory values (edge 0-n, position on edge 0-1, train orientation on edge -1, 1)
 
-    sim_events = assignEdgeTransitions(network, params, solution, initial_position, initial_speed);
+    [sim_events, position] = assignEdgeTransitions(network, params, solution, initial_position, initial_speed);
 
+    traj = assignTrajectory(network, params, position, sim_events, initial_position);
 
-    % TODO: write this function
-
-    events = sim_events(:, 1:2);
+    arrival_events = sim_events(:, 1:2);
 end
 
-function sim_events = assignEdgeTransitions(network, params, solution, initial_position, initial_speed)
+function [sim_events, position] = assignEdgeTransitions(network, params, solution, initial_position, initial_speed)
     %% This is the event-based part of the simulation
     % Also enforces dwell times for scheduled edges
 
@@ -51,10 +50,9 @@ function sim_events = assignEdgeTransitions(network, params, solution, initial_p
         current_edge_length = network.edge_values(sim_events(i_edge_change, 2));
         remaining_backward_length = sim_events(i_edge_change, 3) * current_edge_length;
         remaining_forward_length = current_edge_length - remaining_backward_length;
-        base_position = position(pivot_timestep);
 
         % Find next edge exit 
-        edge_trajectory = sim_events(i_edge_change, 4) * (position(pivot_timestep:end) - base_position);
+        edge_trajectory = sim_events(i_edge_change, 4) * (position(pivot_timestep:end) - position(pivot_timestep));
         next_pivot_timestep = (pivot_timestep - 1) + find((edge_trajectory > remaining_forward_length | edge_trajectory < -remaining_backward_length), 1);
         edge_exit_point = any((edge_trajectory(next_pivot_timestep - (pivot_timestep - 1)) > remaining_forward_length));
         if isempty(next_pivot_timestep)
@@ -80,8 +78,9 @@ function sim_events = assignEdgeTransitions(network, params, solution, initial_p
         if isempty(viable_next_edges)
             % Stay stationary until trajectory comes back around
             % TODO: proper braking curve
+            % TODO: this is currently broken
             % Use the old base position and forw/backw lengths
-            deadend_edge_trajectory = sim_events(i_edge_change, 4) * (position(next_pivot_timestep:end) - base_position);
+            deadend_edge_trajectory = sim_events(i_edge_change, 4) * (position(next_pivot_timestep:end) - position(pivot_timestep));
             if edge_exit_point
                 deadend_next_pivot_timestep = (next_pivot_timestep - 1) + find(deadend_edge_trajectory < remaining_forward_length, 1);
             else
@@ -120,19 +119,20 @@ function sim_events = assignEdgeTransitions(network, params, solution, initial_p
     end
 end
 
-function traj = assignTrajectory()
-    %% Combines position curve and edge transitions into a trajectory on graph
-
-    % TODO: write this function
+function traj = assignTrajectory(network, params, position, sim_events, initial_position)
+    %% Combines position curve and edge transitions into a continuous trajectory on graph
 
     traj(1, :) = initial_position(1);
     traj(2, :) = initial_position(2);
     traj(3, :) = initial_position(3);
 
-    % Set trajectory on the current edge
-    traj(1, pivot_timestep:next_pivot_timestep-1) = traj(1, pivot_timestep);
-    traj(2, pivot_timestep:next_pivot_timestep-1) = traj(2, pivot_timestep) + edge_trajectory(1:next_pivot_timestep - (pivot_timestep-1) - 1) / current_edge_length;
-    traj(3, pivot_timestep:next_pivot_timestep-1) = traj(3, pivot_timestep);
+    for i_transition = 1:size(sim_events, 1) - 1
+        edge_length = network.edge_values(sim_events(i_transition, 2));
+        edge_trajectory = sim_events(i_transition, 4) * (position(sim_events(i_transition, 1):sim_events(i_transition + 1, 1) - 1) - position(sim_events(i_transition, 1)));
+        traj(1,sim_events(i_transition, 1):sim_events(i_transition + 1, 1) - 1) = sim_events(i_transition, 2);
+        traj(2,sim_events(i_transition, 1):sim_events(i_transition + 1, 1) - 1) = sim_events(i_transition, 3) + edge_trajectory / edge_length;
+        traj(3,sim_events(i_transition, 1):sim_events(i_transition + 1, 1) - 1) = sim_events(i_transition, 4);
+    end
 
     traj(:, params.n_timesteps) = traj(:, params.n_timesteps-1);
 end
@@ -140,9 +140,8 @@ end
 function position = generatePositionCurve(params, acceleration, initial_speed)
     acceleration =  (acceleration * 2 - 1) * params.max_accel;
     speeds = initial_speed + cumsum(acceleration);
-    acceleration(speeds>params.max_speed & acceleration>0) = 0;
-    acceleration(speeds<-params.max_speed & acceleration<0) = 0;
-    speeds = initial_speed + cumsum(acceleration);
+    speeds(speeds>params.max_speed) = params.max_speed;
+    speeds(speeds<-params.max_speed) = -params.max_speed;
     position = cumsum(speeds);
 end
 
