@@ -1,19 +1,23 @@
 function greedyHeuristicFormulation()
     [network, params] = generateEnvironment("crossover");
 
+    solution = randomSolution(params);
+
+    test = constructTrajectorySet(network, params, solution);
+
     %[solution, traj_set] = greedySearch(network, params, true, 30, 0.01);
     %disp("---");
-    [solution, traj_set] = greedySearch(network, params, false, 15, 0.1);
+    %[solution, traj_set] = greedySearch(network, params, false, 15, 0.1);
     %[solution, traj_set] = geneticGlobalSearch(network, params);
     %[solution, falsetraj_set] = particleSwarmSearch(network, params);
 
     %[solution, traj_set] = repairHeuristic(network, params, solution, traj_set);
-    [solution, traj_set] = refineSolution(network, params, solution, traj_set);
+    %[solution, traj_set] = refineSolution(network, params, solution, traj_set);
 
-    final_collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed)
-    csvwrite("network.csv", network.adjacency_matrix);
-    csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
-    csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
+    %final_collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed)
+    %csvwrite("network.csv", network.adjacency_matrix);
+    %csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
+    %csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
 end
 
 function [network, params] = generateEnvironment(network_template)
@@ -39,9 +43,8 @@ function [network, params] = generateEnvironment(network_template)
     params.max_changeover_time = 1440; % 4hrs
     params.train_capacity = 400; % 400 Passengers
     params.dwell_timesteps = 12; % 2 minutes
-    params.n_switch_vars = params.max_speed * params.n_timesteps / min(tmp_adj); % Bounded by max possible edge changes
-
-    assert(mod(params.n_timesteps, params.interpolation_factor) == 0);
+    params.n_switch_vars = params.max_speed * params.n_timesteps / min(tmp_adj, [], 'all')
+; % Bounded by max possible edge changes
 
     %% Train Parameters
     start_nodes = readmatrix(strcat("../network_templates/", network_template, "_start_nodes.csv"));
@@ -70,7 +73,7 @@ function [traj_set, event_set] = constructTrajectorySet(network, params, solutio
     event_set = [];
     traj_set = zeros(n_trains, 3, params.n_timesteps);
     for i_train = 1:n_trains
-        [traj_set(i_train, :, :), new_events] = constructTrajectory(network, params, solution(i_train,:), initial_positions(i_train, :), initial_speeds(i_train));
+        [traj_set(i_train, :, :), new_events] = constructTrajectory(network, params, solution(i_train,:), params.initial_positions(i_train, :), params.initial_speeds(i_train));
         new_events(3,:) = i_train;
         event_set = cat(2, event_set, new_events);
     end
@@ -205,7 +208,6 @@ function [solution, traj_set, round_best_score] = greedySolution(network, params
 
         while toc(stall_timer) < per_train_stall_time
             % Generate new trajectory
-            new_train_solution = rand(params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars);
             [new_traj, new_events] = constructTrajectory(network, new_train_solution, params.initial_positions(i_train,:), params.initial_speeds(i_train), params.max_accel, params.max_speed, params.interpolation_factor);
 
             % Add new trajectory to old set
@@ -254,10 +256,10 @@ end
 
 function [solution, traj_set] = geneticGlobalSearch(network, params)
     %% Run genetic algorithm globally over collision and objective
-    nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
+    nvars = params.n_trains * 2 * params.n_acceleration_vars + params.n_switch_vars;
     % GA uses a nvars^2 matrix for mutation costing a lot of memory
     % GA wants normalized parameters
-    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, ) + 0.5);
+    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars) + 0.5);
     options = optimoptions('ga', ...
         'Display','diagnose', ...
         'UseParallel', true, ...
@@ -273,10 +275,10 @@ end
 
 function [solution, traj_set] = particleSwarmSearch(network, params)
     %% Run particle swarm optimization globally over collision and objective
-    nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
+    nvars = params.n_trains * 2 * params.n_acceleration_vars + params.n_switch_vars;
     % GA uses a nvars^2 matrix for mutation costing a lot of memory
     % GA wants normalized parameters
-    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor) + 0.5);
+    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars) + 0.5);
     options = optimoptions('particleswarm', ...
         'Display','iter', ...
         'UseParallel', true, ...
@@ -291,8 +293,8 @@ function [solution, traj_set] = particleSwarmSearch(network, params)
 end
 
 function [solution, traj_set] = refineSolution(network, params, solution, traj_set)
-    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 4 * params.n_timesteps / params.interpolation_factor));
-    nvars = params.n_trains * 4 * params.n_timesteps / params.interpolation_factor;
+    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars));
+    nvars = params.n_trains * 2 * params.n_acceleration_vars + params.n_switch_vars;
     options = optimoptions('patternsearch', ...
         'Display','iter', ...
         'UseParallel', true, ...
