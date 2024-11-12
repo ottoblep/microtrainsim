@@ -10,56 +10,49 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
     % solution dimensions ( 2 * n_acceleration_vars + n_switch_vars )
     % solution values (accel_time 0-1, accel_value 0-1, switch_direction 0-1)
     % solution serialization (accel_timesteps, accel_values, sw_direction)
+
     % initial position dimensions (3)
     % initial position values (edge 0-n, position on edge 0-1, train orientation on edge -1, 1)
+
     % initial speed dimensions (1)
     % initial speed values (speed: -max_speed-max_speed)
-    % trajectory dimensions (3, timestep)
-    % trajectory values (edge 0-n, position on edge 0-1, train orientation on edge -1, 1)
-    % events dimensions (2, n)
-    % events values (edge, edge_entrance_timestep)
+
+    % TODO: write this function
+end
+
+function events = assignEdgeTransitions(network, solution, initial_position, initial_speed)
+    %% This is the event-based part of the simulation
+    % Also enforces dwell times for scheduled edges
+
+    % events dimensions (edge_changes, 4)
+    % events values (timestep, new_edge, position_on_edge, train_orientation_on_edge)
 
     acceleration = interpolateSolutionCurve(solution(1:n_acceleration_vars)*params.n_timesteps, solution(n_acceleration_vars+1:2*n_acceleration_vars), 1:params.n_timesteps);
-    speeds = initial_speed + cumtrapz(((acceleration * 2) - 1) * max_accel);
-    speeds(speeds>max_speed) = max_speed;
-    speeds(speeds<-max_speed) = -max_speed;
-    position = cumtrapz(speeds);
-
     switch_directions = solution(2 * n_acceleration_vars + 1:2 * n_acceleration_vars + n_switch_vars);
+    position = generatePositionCurve(params, acceleration, initial_speed);
 
-    events = [];
-    traj(1, :) = initial_position(1);
-    traj(2, :) = initial_position(2);
-    traj(3, :) = initial_position(3);
-
-    % Record possible initial placement on node
-    if initial_position(2) == 0
-        events(:, end+1) = [network.edge_rows(initial_position(1)), 1];
-    elseif initial_position(2) == 1
-        events(:, end+1) = [network.edge_cols(initial_position(1)), 1];
-    end
+    events(1, 1) = 1; 
+    events(1, 2) = initial_position(1);
+    events(1, 3) = initial_position(2);
+    events(1, 4) = initial_position(3);
 
     pivot_timestep = 1;
-    i_edge_change = 1;
+    i_edge_change = 2;
     while pivot_timestep < params.n_timesteps
-        current_edge_length = network.edge_values(traj(1, pivot_timestep));
-        remaining_backward_length = traj(2, pivot_timestep) * current_edge_length;
+        % Determine position on edge
+        current_edge_length = network.edge_values(events(pivot_timestep, 2));
+        remaining_backward_length = events(pivot_timestep, 3) * current_edge_length;
         remaining_forward_length = current_edge_length - remaining_backward_length;
         base_position = position(pivot_timestep);
 
-        % Find next edge change
-        edge_trajectory = traj(3, pivot_timestep) * (position(pivot_timestep:end) - base_position);
+        % Find next edge exit 
+        edge_trajectory = events(pivot_timestep, 4) * (position(pivot_timestep:end) - base_position);
         next_pivot_timestep = (pivot_timestep - 1) + find((edge_trajectory > remaining_forward_length | edge_trajectory < -remaining_backward_length), 1);
         edge_exit_point = any((edge_trajectory(next_pivot_timestep - (pivot_timestep - 1)) > remaining_forward_length));
         if isempty(next_pivot_timestep)
             next_pivot_timestep = params.n_timesteps;
         end
         assert(next_pivot_timestep <= params.n_timesteps);
-
-        % Set trajectory on the current edge
-        traj(1, pivot_timestep:next_pivot_timestep-1) = traj(1, pivot_timestep);
-        traj(2, pivot_timestep:next_pivot_timestep-1) = traj(2, pivot_timestep) + edge_trajectory(1:next_pivot_timestep - (pivot_timestep-1) - 1) / current_edge_length;
-        traj(3, pivot_timestep:next_pivot_timestep-1) = traj(3, pivot_timestep);
 
         % Leave current edge
         % node_traversal_direction = edge_exit_point XNOR old_train_orientation
@@ -75,34 +68,80 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
 
         events(:, end+1) = [traversed_node, next_pivot_timestep];
 
-        % Decide on next edge
         viable_next_edges = network.adjacent_edge_list{traversed_node};
         viable_next_edges = viable_next_edges(viable_next_edges~=traj(1, pivot_timestep));
 
         if isempty(viable_next_edges)
-            % Break and stay stationary until trajectory comes back
+            % Stay stationary until trajectory comes back around
+            % TODO: proper braking curve
+            % Use the old base position and forw/backw lengths
+            deadend_edge_trajectory = events(pivot_timestep, 4) * (position(next_pivot_timestep:end) - base_position);
+            if edge_exit_point
+                deadend_next_pivot_timestep = (next_pivot_timestep - 1) + find(deadend_edge_trajectory < remaining_forward_length, 1);
+            else
+                deadend_next_pivot_timestep = (next_pivot_timestep - 1) + find(deadend_edge_trajectory > -remaining_backward_length, 1);
+            end
+            if isempty(deadend_next_pivot_timestep)
+                deadend_next_pivot_timestep = n_timesteps;
+            end
+            assert(deadend_next_pivot_timestep <= n_timesteps);
 
+            % Stay stationary at dead end of edge 
+            events(i_edge_change, 1) = deadend_next_pivot_timestep;
+            events(i_edge_change, 2) = events(i_edge_change - 1, 2);
+            events(i_edge_change, 3) = double(edge_exit_point);
+            events(i_edge_change, 4) = events(i_edge_change - 1, 4);
+
+            pivot_timestep = deadend_next_pivot_timestep;
         else
+            % Decide next edge
             next_edge_selection = 1 + round(switch_directions(i_edge_change) * (length(viable_next_edges) - 1));
             i_edge_change = i_edge_change + 1;
             next_edge = viable_next_edges(next_edge_selection);
 
-            % Check for a scheduled stop
+            % TODO: Check for a scheduled stop and adjust curve
 
             edge_entrance_point = (network.edge_cols(next_edge) == traversed_node);
-            % New Edge
-            traj(1, next_pivot_timestep) = next_edge;
-            % New Position on Edge
-            traj(2, next_pivot_timestep) = edge_entrance_point + (-1) * (edge_entrance_point*2 - 1) * abs(extra_movement / network.edge_values(next_edge));
-            % New Orientation on Edge
+            events(i_edge_change, 1) = next_pivot_timestep;
+            events(i_edge_change, 2) = next_edge; % New Edge
+            events(i_edge_change, 3) = edge_entrance_point + (-1) * (edge_entrance_point*2 - 1) * abs(extra_movement / network.edge_values(next_edge)); % New Position on Edge
             % new_train_orientation      =         edge_entrance_point      XOR node_traversal_direction    ( XNOR is multiplication )
-            traj(3, next_pivot_timestep) = (-1) * (edge_entrance_point*2 - 1) * node_traversal_direction;
+            events(i_edge_change, 4) = (-1) * (edge_entrance_point*2 - 1) * node_traversal_direction; % New Orientation on Edge
 
             pivot_timestep = next_pivot_timestep;
         end
+
+        i_edge_change = i_edge_change  + 1;
     end
+end
+
+function traj = assignTrajectory()
+    %% Combines position curve and edge transitions into a trajectory on graph
+
+    % TODO: write this function
+
+    % trajectory dimensions (3, timestep)
+    % trajectory values (edge 0-n, position on edge 0-1, train orientation on edge -1, 1)
+
+    traj(1, :) = initial_position(1);
+    traj(2, :) = initial_position(2);
+    traj(3, :) = initial_position(3);
+
+    % Set trajectory on the current edge
+    traj(1, pivot_timestep:next_pivot_timestep-1) = traj(1, pivot_timestep);
+    traj(2, pivot_timestep:next_pivot_timestep-1) = traj(2, pivot_timestep) + edge_trajectory(1:next_pivot_timestep - (pivot_timestep-1) - 1) / current_edge_length;
+    traj(3, pivot_timestep:next_pivot_timestep-1) = traj(3, pivot_timestep);
 
     traj(:, params.n_timesteps) = traj(:, params.n_timesteps-1);
+end
+
+function position = generatePositionCurve(params, acceleration, initial_speed)
+    acceleration =  (acceleration * 2 - 1) * params.max_accel;
+    speeds = initial_speed + cumsum(acceleration);
+    acceleration(speeds>v_max & acceleration>0) = 0;
+    acceleration(speeds<-v_max & acceleration<0) = 0;
+    speeds = initial_speed + cumsum(acceleration);
+    position = cumsum(speeds);
 end
 
 function y_new = interpolateSolutionCurve(x, y, x_new)
