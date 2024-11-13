@@ -1,5 +1,6 @@
 function greedyHeuristicFormulation()
     [network, params] = generateEnvironment("crossover");
+    assert(all(network.edge_values > params.max_speed)); % Requirement for trajectory construction
 
     solution = randomSolution(params);
 
