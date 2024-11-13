@@ -13,9 +13,8 @@ hold on;
 
 acceleration = (interpolateSolutionCurve(points, vals, 1:timesteps) * 2 - 1) * a_max;
 speeds = v_init + cumsum(acceleration);
-acceleration(speeds>v_max & acceleration>0) = 0;
-acceleration(speeds<-v_max & acceleration<0) = 0;
-speeds = v_init + cumsum(acceleration);
+speeds(speeds>v_max) = v_max;
+speeds(speeds<-v_max) = -v_max;
 position = x_0 + cumsum(speeds);
 
 initial_arrival_time = round(0.5 * timesteps);
@@ -46,12 +45,14 @@ if n_full_braking_steps + 1 > timesteps - start_braking_timestep
     error("Not enough time to brake.");
 end
 a_last_step = abs(speeds(start_braking_timestep-1)) - n_full_braking_steps * a_max;
+assert((n_full_braking_steps * a_max + a_last_step == abs(speeds(start_braking_timestep-1))));
 end_braking_timestep = start_braking_timestep + n_full_braking_steps;
 
 scatter(initial_arrival_time, position(initial_arrival_time),'DisplayName','initial arrival time');
 plot(1:timesteps, position,'DisplayName','position old');
 
 % Adjust acceleration values
+acceleration = [speeds(1)-v_init diff(speeds)];
 acceleration(start_braking_timestep:end_braking_timestep - 1) = -approach_direction * a_max;
 acceleration(end_braking_timestep) = -approach_direction * a_last_step;
 if end_braking_timestep + dwell_time > timesteps
@@ -60,9 +61,6 @@ else
     acceleration(end_braking_timestep+1:end_braking_timestep + dwell_time) = 0;
 end
 % Recalculate positions
-speeds = v_init + cumsum(acceleration);
-acceleration(speeds>v_max & acceleration>0) = 0;
-acceleration(speeds<-v_max & acceleration<0) = 0;
 speeds = v_init + cumsum(acceleration);
 position = x_0 + cumsum(speeds);
 
