@@ -57,9 +57,8 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
         next_pivot_timestep = (pivot_timestep - 1) + find((edge_trajectory > remaining_forward_length | edge_trajectory < -remaining_backward_length), 1);
         edge_exit_point = any((edge_trajectory(next_pivot_timestep - (pivot_timestep - 1)) > remaining_forward_length));
         if isempty(next_pivot_timestep)
-            next_pivot_timestep = params.n_timesteps;
+            return;
         end
-        assert(next_pivot_timestep <= params.n_timesteps);
 
         % Leave current edge
         % node_traversal_direction = edge_exit_point XNOR old_train_orientation
@@ -77,10 +76,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
         viable_next_edges = viable_next_edges(viable_next_edges~=sim_events(i_edge_change, 2));
 
         if isempty(viable_next_edges)
-            % Stay stationary until trajectory comes back around
-
-            % TODO: Adjust position curve to be constant until trajectory comes back
-
+            % Find time when trajectory comes back around
             deadend_edge_trajectory = sim_events(i_edge_change, 4) * (position(next_pivot_timestep:end) - position(pivot_timestep));
             if edge_exit_point
                 deadend_next_pivot_timestep = (next_pivot_timestep - 1) + find(deadend_edge_trajectory < remaining_forward_length, 1);
@@ -91,6 +87,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
                 deadend_next_pivot_timestep = params.n_timesteps;
             end
 
+            % Modify curve so dead end is no longer hit 
             [position, speeds, start_braking_timestep] = addStop(params, position, speeds, pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position, 0);
 
             % Revisit some past events with new curve
@@ -142,10 +139,11 @@ function [position, speeds, start_braking_timestep] = addStop(params, position, 
     d_brake = k .* v - params.max_accel * k .* (k+1) * 0.5;
     d = abs(position(first_approach_idx:arrival_timestep) - position(arrival_timestep));
     start_braking_timestep = first_approach_idx + find(d < d_brake, 1, 'first') + (2 * overshoot - 1);
+    if isempty(start_braking_timestep)
+        start_braking_timestep = 1;
+    end
 
     % Calculate braking curve
-    
-
     if start_braking_timestep == 1
         n_full_braking_steps = floor(abs(initial_speed)/params.max_accel);
         a_last_step = abs(initial_speed) - n_full_braking_steps * params.max_accel;
@@ -170,8 +168,8 @@ function [position, speeds, start_braking_timestep] = addStop(params, position, 
         speeds = initial_speed + cumsum(acceleration);
         position = cumsum(speeds);
     else
-        speeds(start_braking_timestep:end) = speeds(start_braking_timestep - 1) + cumsum(acceleration(start_braking_timestep:end));
-        position(start_braking_timestep:end) = position(start_braking_timestep - 1) + cumsum(speeds(start_braking_timestep:end));
+        speeds(start_braking_timestep:params.n_timesteps) = speeds(start_braking_timestep - 1) + cumsum(acceleration(start_braking_timestep:params.n_timesteps));
+        position(start_braking_timestep:params.n_timesteps) = position(start_braking_timestep - 1) + cumsum(speeds(start_braking_timestep:params.n_timesteps));
     end
 end
 
@@ -182,15 +180,21 @@ function traj = assignTrajectory(network, params, position, sim_events, initial_
     traj(2, :) = initial_position(2);
     traj(3, :) = initial_position(3);
 
-    for i_transition = 1:size(sim_events, 1) - 1
-        edge_length = network.edge_values(sim_events(i_transition, 2));
-        edge_trajectory = sim_events(i_transition, 4) * (position(sim_events(i_transition, 1):sim_events(i_transition + 1, 1) - 1) - position(sim_events(i_transition, 1)));
-        traj(1,sim_events(i_transition, 1):sim_events(i_transition + 1, 1) - 1) = sim_events(i_transition, 2);
-        traj(2,sim_events(i_transition, 1):sim_events(i_transition + 1, 1) - 1) = sim_events(i_transition, 3) + edge_trajectory / edge_length;
-        traj(3,sim_events(i_transition, 1):sim_events(i_transition + 1, 1) - 1) = sim_events(i_transition, 4);
+    for i_transition = 1:size(sim_events, 1)
+        if i_transition < size(sim_events, 1)
+            edge_length = network.edge_values(sim_events(i_transition, 2));
+            edge_trajectory = sim_events(i_transition, 4) * (position(sim_events(i_transition, 1):sim_events(i_transition + 1, 1) - 1) - position(sim_events(i_transition, 1)));
+            traj(1,sim_events(i_transition, 1):sim_events(i_transition + 1, 1) - 1) = sim_events(i_transition, 2);
+            traj(2,sim_events(i_transition, 1):sim_events(i_transition + 1, 1) - 1) = sim_events(i_transition, 3) + edge_trajectory / edge_length;
+            traj(3,sim_events(i_transition, 1):sim_events(i_transition + 1, 1) - 1) = sim_events(i_transition, 4);
+        else
+            edge_length = network.edge_values(sim_events(i_transition, 2));
+            edge_trajectory = sim_events(i_transition, 4) * (position(sim_events(i_transition, 1):params.n_timesteps) - position(sim_events(i_transition, 1)));
+            traj(1,sim_events(i_transition, 1):params.n_timesteps) = sim_events(i_transition, 2);
+            traj(2,sim_events(i_transition, 1):params.n_timesteps) = sim_events(i_transition, 3) + edge_trajectory / edge_length;
+            traj(3,sim_events(i_transition, 1):params.n_timesteps) = sim_events(i_transition, 4);
+        end
     end
-
-    traj(:, params.n_timesteps) = traj(:, params.n_timesteps-1);
 end
 
 function y_new = interpolateSolutionCurve(x, y, x_new)
