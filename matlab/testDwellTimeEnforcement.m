@@ -61,8 +61,8 @@ else
     acceleration(end_braking_timestep+1:end_braking_timestep + dwell_time) = 0;
 end
 % Recalculate positions
-speeds = v_init + cumsum(acceleration);
-position = x_0 + cumsum(speeds);
+speeds(start_braking_timestep:end) = speeds(start_braking_timestep - 1) + cumsum(acceleration(start_braking_timestep:end));
+position(start_braking_timestep:end) = position(start_braking_timestep - 1) + cumsum(speeds(start_braking_timestep:end));
 
 v_error = speeds(end_braking_timestep)
 p_relative_error = approach_direction * (position(end_braking_timestep) - position(initial_arrival_time))
