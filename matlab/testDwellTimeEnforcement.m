@@ -17,6 +17,8 @@ speeds(speeds>v_max) = v_max;
 speeds(speeds<-v_max) = -v_max;
 position = x_0 + cumsum(speeds);
 
+original_stop_position = position(initial_arrival_time);
+
 initial_arrival_time = round(0.5 * timesteps);
 
 approach_direction = sign(speeds(initial_arrival_time));
@@ -37,7 +39,7 @@ v = speeds(approach_timesteps);
 k = floor(v./a_max);
 d_brake = k .* v - a_max * k .* (k+1) * 0.5;
 d = abs(position(approach_timesteps) - position(initial_arrival_time));
-start_braking_timestep = first_approach_idx + find(d < d_brake, 1, 'first') + 1;
+start_braking_timestep = first_approach_idx + find(d < d_brake, 1, 'first') - 1;
 
 % Calculate braking curve
 n_full_braking_steps = floor(abs(speeds(start_braking_timestep-1))/a_max);
@@ -65,7 +67,7 @@ speeds(start_braking_timestep:end) = speeds(start_braking_timestep - 1) + cumsum
 position(start_braking_timestep:end) = position(start_braking_timestep - 1) + cumsum(speeds(start_braking_timestep:end));
 
 v_error = speeds(end_braking_timestep)
-p_relative_error = approach_direction * (position(end_braking_timestep) - position(initial_arrival_time))
+p_relative_error = approach_direction * (position(end_braking_timestep) - original_stop_position)
 
 scatter(first_approach_idx, position(first_approach_idx),'DisplayName','first approach idx');
 scatter(start_braking_timestep, position(start_braking_timestep), 'DisplayName','start braking timestep');

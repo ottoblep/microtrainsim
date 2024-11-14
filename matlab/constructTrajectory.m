@@ -35,13 +35,14 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
     % Also enforces dwell times for scheduled edges
 
     acceleration = interpolateSolutionCurve(solution(1:params.n_acceleration_vars)*params.n_timesteps, solution(params.n_acceleration_vars+1:2*params.n_acceleration_vars), 1:params.n_timesteps);
+    acceleration =  (acceleration * 2 - 1) * params.max_accel;
     switch_directions = solution(2 * params.n_acceleration_vars + 1:2 * params.n_acceleration_vars + params.n_switch_vars);
-    position = generatePositionCurve(params, acceleration, initial_speed);
+    speeds = initial_speed + cumsum(acceleration);
+    speeds(speeds>params.max_speed) = params.max_speed;
+    speeds(speeds<-params.max_speed) = -params.max_speed;
+    position = cumsum(speeds);
 
-    sim_events(1, 1) = 1; 
-    sim_events(1, 2) = initial_position(1);
-    sim_events(1, 3) = initial_position(2);
-    sim_events(1, 4) = initial_position(3);
+    sim_events(1,:) = [1 initial_position(1) initial_position(2) initial_position(3)];
 
     pivot_timestep = 1;
     i_edge_change = 1;
@@ -77,9 +78,9 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
         if isempty(viable_next_edges)
             % Stay stationary until trajectory comes back around
-            % TODO: proper braking curve
-            % TODO: this is currently broken
-            % Use the old base position and forw/backw lengths
+
+            % TODO: Adjust position curve to be constant until trajectory comes back
+
             deadend_edge_trajectory = sim_events(i_edge_change, 4) * (position(next_pivot_timestep:end) - position(pivot_timestep));
             if edge_exit_point
                 deadend_next_pivot_timestep = (next_pivot_timestep - 1) + find(deadend_edge_trajectory < remaining_forward_length, 1);
@@ -89,15 +90,18 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
             if isempty(deadend_next_pivot_timestep)
                 deadend_next_pivot_timestep = params.n_timesteps;
             end
-            assert(deadend_next_pivot_timestep <= params.n_timesteps);
 
-            % Stay stationary at dead end of edge 
-            sim_events(i_edge_change + 1, 1) = deadend_next_pivot_timestep;
-            sim_events(i_edge_change + 1, 2) = sim_events(i_edge_change, 2);
-            sim_events(i_edge_change + 1, 3) = double(edge_exit_point);
-            sim_events(i_edge_change + 1, 4) = sim_events(i_edge_change, 4);
+            [position, speeds, start_braking_timestep] = addStop(params, position, speeds, pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position, 0);
 
-            pivot_timestep = deadend_next_pivot_timestep;
+            % Revisit some past events with new curve
+            sim_events = sim_events(sim_events(:, 1) < start_braking_timestep, :);
+            if isempty(sim_events)
+                sim_events(1,:) = [1 initial_position(1) initial_position(2) initial_position(3)];
+                pivot_timestep = 1;
+            else
+                pivot_timestep = sim_events(end, 1);
+            end
+            i_edge_change = size(sim_events, 1);
         else
             % Decide next edge
             next_edge_selection = 1 + round(switch_directions(i_edge_change) * (length(viable_next_edges) - 1));
@@ -113,9 +117,61 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
             sim_events(i_edge_change + 1, 4) = (-1) * (edge_entrance_point*2 - 1) * node_traversal_direction; % New Orientation on Edge
 
             pivot_timestep = next_pivot_timestep;
+            i_edge_change = i_edge_change + 1;
         end
+    end
+end
 
-        i_edge_change = i_edge_change + 1;
+function [position, speeds, start_braking_timestep] = addStop(params, position, speeds, arrival_timestep, departure_time, initial_speed, initial_position, overshoot)
+    %% Modifies position curve to stop around a certain position indicated by a timestep on the old curve
+
+    approach_direction = sign(speeds(arrival_timestep));
+    pre_stop_timesteps = 1:arrival_timestep;
+    % Only consider time since last direction change
+    first_approach_idx = find(sign(speeds(1:arrival_timestep)) ~= approach_direction, 1, 'last') + 1;
+    if isempty(first_approach_idx)
+        first_approach_idx = 1;
+    end
+
+    % Select timestep to start braking (will over or undershoot due to discretization)
+    % Discrete Formula for distance covered under k braking steps
+    % k*v(n) - a*k*(k+1)/2 
+    % maximum (stop point) at (v-a/2)/a
+    v = speeds(first_approach_idx:arrival_timestep);
+    k = floor(v./params.max_accel);
+    d_brake = k .* v - params.max_accel * k .* (k+1) * 0.5;
+    d = abs(position(first_approach_idx:arrival_timestep) - position(arrival_timestep));
+    start_braking_timestep = first_approach_idx + find(d < d_brake, 1, 'first') + (2 * overshoot - 1);
+
+    % Calculate braking curve
+    
+
+    if start_braking_timestep == 1
+        n_full_braking_steps = floor(abs(initial_speed)/params.max_accel);
+        a_last_step = abs(initial_speed) - n_full_braking_steps * params.max_accel;
+    else
+        n_full_braking_steps = floor(abs(speeds(start_braking_timestep-1))/params.max_accel);
+        a_last_step = abs(speeds(start_braking_timestep-1)) - n_full_braking_steps * params.max_accel;
+    end
+    if all(n_full_braking_steps + 1 > params.n_timesteps - start_braking_timestep)
+        warning("Not enough time to brake.");
+        return;
+    end
+    end_braking_timestep = start_braking_timestep + n_full_braking_steps;
+
+    % Adjust acceleration values
+    acceleration = [speeds(1)-initial_speed diff(speeds)];
+    acceleration(start_braking_timestep:end_braking_timestep - 1) = -approach_direction * params.max_accel;
+    acceleration(end_braking_timestep) = -approach_direction * a_last_step;
+    acceleration(end_braking_timestep+1:departure_time) = 0;
+
+    % Recalculate positions
+    if start_braking_timestep == 1
+        speeds = initial_speed + cumsum(acceleration);
+        position = cumsum(speeds);
+    else
+        speeds(start_braking_timestep:end) = speeds(start_braking_timestep - 1) + cumsum(acceleration(start_braking_timestep:end));
+        position(start_braking_timestep:end) = position(start_braking_timestep - 1) + cumsum(speeds(start_braking_timestep:end));
     end
 end
 
@@ -135,14 +191,6 @@ function traj = assignTrajectory(network, params, position, sim_events, initial_
     end
 
     traj(:, params.n_timesteps) = traj(:, params.n_timesteps-1);
-end
-
-function position = generatePositionCurve(params, acceleration, initial_speed)
-    acceleration =  (acceleration * 2 - 1) * params.max_accel;
-    speeds = initial_speed + cumsum(acceleration);
-    speeds(speeds>params.max_speed) = params.max_speed;
-    speeds(speeds<-params.max_speed) = -params.max_speed;
-    position = cumsum(speeds);
 end
 
 function y_new = interpolateSolutionCurve(x, y, x_new)
