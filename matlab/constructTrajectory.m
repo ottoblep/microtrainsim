@@ -76,13 +76,8 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
         viable_next_edges = viable_next_edges(viable_next_edges~=sim_events(i_edge_change, 2));
 
         if isempty(viable_next_edges)
-            % Find time when trajectory comes back around
-            deadend_edge_trajectory = sim_events(i_edge_change, 4) * (position(next_pivot_timestep:end) - position(pivot_timestep));
-            if edge_exit_point
-                deadend_next_pivot_timestep = (next_pivot_timestep - 1) + find(deadend_edge_trajectory < remaining_forward_length, 1);
-            else
-                deadend_next_pivot_timestep = (next_pivot_timestep - 1) + find(deadend_edge_trajectory > -remaining_backward_length, 1);
-            end
+            % Find time train would turn around 
+            deadend_next_pivot_timestep = find(sign(speeds(next_pivot_timestep:params.n_timesteps)) ~= node_traversal_direction, 1, 'first');
             if isempty(deadend_next_pivot_timestep)
                 deadend_next_pivot_timestep = params.n_timesteps;
             end
