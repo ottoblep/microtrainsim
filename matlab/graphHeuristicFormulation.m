@@ -4,7 +4,7 @@ function greedyHeuristicFormulation()
 
     solution = randomSolution(params);
 
-    test = constructTrajectorySet(network, params, solution);
+    [traj_set, arrival_events] = constructTrajectorySet(network, params, solution);
 
     %[solution, traj_set] = greedySearch(network, params, true, 30, 0.01);
     %disp("---");
@@ -16,9 +16,9 @@ function greedyHeuristicFormulation()
     %[solution, traj_set] = refineSolution(network, params, solution, traj_set);
 
     %final_collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed)
-    %csvwrite("network.csv", network.adjacency_matrix);
-    %csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
-    %csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
+    csvwrite("network.csv", network.adjacency_matrix);
+    csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
+    csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
 end
 
 function [network, params] = generateEnvironment(network_template)
@@ -48,12 +48,8 @@ function [network, params] = generateEnvironment(network_template)
 ; % Bounded by max possible edge changes
 
     %% Train Parameters
-    start_nodes = readmatrix(strcat("../network_templates/", network_template, "_start_nodes.csv"));
-    params.n_trains = numel(start_nodes);
-    for i_train = 1:params.n_trains
-        [params.initial_positions(i_train, 1), params.initial_positions(i_train, 2)] = nodeToEdgePos(network, start_nodes(i_train));
-    end
-    params.initial_positions(:, 3) = ones(params.n_trains, 1);
+    params.initial_positions = readmatrix(strcat("../network_templates/", network_template, "_initial_positions.csv"));
+    params.n_trains = size(params.initial_positions, 1);
     params.initial_speeds = zeros(params.n_trains, 1);
 
     params.destinations = readmatrix(strcat("../network_templates/", network_template, "_destinations.csv"));
