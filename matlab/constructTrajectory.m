@@ -1,4 +1,4 @@
-function [traj,arrival_events] = constructTrajectory(network, params, solution, initial_position, initial_speed)
+function [traj,arrival_events] = constructTrajectory(network, params, solution, initial_position, initial_speed, planned_stops)
     %% Constructs a single train trajectory on the graph
 
     % Acceleration vars are a sparse representation of the acceleration curves.
@@ -17,22 +17,25 @@ function [traj,arrival_events] = constructTrajectory(network, params, solution, 
     % initial speed dimensions (1)
     % initial speed values (speed: -max_speed-max_speed)
 
+    % planned stops dimenstions (n, 3)
+    % planned stops values (edge 0-n, arrival_time_fraction_of_timesteps 0-1)
+
     % sim_events dimensions (edge_changes, 4)
     % sim_events values (timestep, new_edge, position_on_edge, train_orientation_on_edge)
 
     % trajectory dimensions (3, timestep)
     % trajectory values (edge 0-n, position on edge 0-1, train orientation on edge -1, 1)
 
-    [sim_events, position] = assignEdgeTransitions(network, params, solution, initial_position, initial_speed);
+    [sim_events, position] = assignEdgeTransitions(network, params, solution, initial_position, initial_speed, planned_stops);
 
     traj = assignTrajectory(network, params, position, sim_events, initial_position);
 
     arrival_events = sim_events(:, 1:2);
 end
 
-function [sim_events, position] = assignEdgeTransitions(network, params, solution, initial_position, initial_speed)
+function [sim_events, position] = assignEdgeTransitions(network, params, solution, initial_position, initial_speed, planned_stops)
     %% This is the event-based part of the simulation
-    % Also enforces dwell times for scheduled edges
+    % Also enforces stopping for scheduled edges and dead ends
 
     acceleration = interpolateSolutionCurve(solution(1:params.n_acceleration_vars)*params.n_timesteps, solution(params.n_acceleration_vars+1:2*params.n_acceleration_vars), 1:params.n_timesteps);
     acceleration =  (acceleration * 2 - 1) * params.max_accel;
@@ -77,15 +80,16 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
         if isempty(viable_next_edges)
             % Find time train would turn around 
-            deadend_next_pivot_timestep = find(sign(speeds(next_pivot_timestep:params.n_timesteps)) ~= node_traversal_direction, 1, 'first');
+            deadend_next_pivot_timestep = next_pivot_timestep - 1 + find(sign(speeds(next_pivot_timestep:params.n_timesteps)) ~= node_traversal_direction, 1, 'first');
             if isempty(deadend_next_pivot_timestep)
                 deadend_next_pivot_timestep = params.n_timesteps;
             end
 
             % Modify curve so dead end is no longer hit
+            assert(next_pivot_timestep < deadend_next_pivot_timestep);
             [position, speeds, start_braking_timestep] = addStop(params, position, speeds, next_pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position, 0);
 
-            % Revisit some past events with new curve
+            % Revisit some past events that may have changed timing 
             sim_events = sim_events(sim_events(:, 1) < start_braking_timestep, :);
             if isempty(sim_events)
                 sim_events(1,:) = [1 initial_position(1) initial_position(2) initial_position(3)];
@@ -99,7 +103,12 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
             next_edge_selection = 1 + round(switch_directions(i_edge_change) * (length(viable_next_edges) - 1));
             next_edge = viable_next_edges(next_edge_selection);
 
-            % TODO: Check for a scheduled stop and adjust curve
+            % Check for a scheduled stop that has not yet been visited
+            if ismember(next_edge, planned_stops(:,2))
+                departure_timestep = min(next_pivot_timestep + params.dwell_timesteps, params.n_timesteps);
+                [position, speeds, start_braking_timestep] = addStop(params, position, speeds, next_pivot_timestep, departure_timestep, initial_speed, initial_position, 1);
+                planned_stops(planned_stops(:,2) == next_edge, :) = 0; % Remove planned stop
+            end
 
             edge_entrance_point = (network.edge_cols(next_edge) == traversed_node);
             sim_events(i_edge_change + 1, 1) = next_pivot_timestep;
@@ -166,6 +175,8 @@ function [position, speeds, start_braking_timestep] = addStop(params, position, 
         speeds(start_braking_timestep:params.n_timesteps) = speeds(start_braking_timestep - 1) + cumsum(acceleration(start_braking_timestep:params.n_timesteps));
         position(start_braking_timestep:params.n_timesteps) = position(start_braking_timestep - 1) + cumsum(speeds(start_braking_timestep:params.n_timesteps));
     end
+
+    assert((first_approach_idx <= start_braking_timestep) && (start_braking_timestep <= end_braking_timestep) && (end_braking_timestep <= departure_time));
 end
 
 function traj = assignTrajectory(network, params, position, sim_events, initial_position)

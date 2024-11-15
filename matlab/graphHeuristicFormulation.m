@@ -60,17 +60,25 @@ end
 
 function [traj_set, event_set] = constructTrajectorySet(network, params, solution)
     %% Constructs a set of train trajectories on the graph
+
     % solution dimensions (n_trains, 2 * n_acceleration_vars + n_switch_vars)
+
     % initial position dimensions (n_trains, 3)
     % initial speed dimensions (n_trains)
+
+    % planned stops dimenstions (n, 3)
+    % planned stops values (train, edge, arrival_time_fraction_of_timesteps)
+
     % traj_set dimensions (n_trains, 3, timestep)
+
     % event_set dimensions (n, 3))
     % event_set values (train, timestep, presence_at_node)
+
     n_trains = size(solution,1);
     event_set = [];
     traj_set = zeros(n_trains, 3, params.n_timesteps);
     for i_train = 1:n_trains
-        [traj_set(i_train, :, :), new_events] = constructTrajectory(network, params, solution(i_train,:), params.initial_positions(i_train, :), params.initial_speeds(i_train));
+        [traj_set(i_train, :, :), new_events] = constructTrajectory(network, params, solution(i_train,:), params.initial_positions(i_train, :), params.initial_speeds(i_train), params.planned_stops(params.planned_stops(:,1)==i_train, :));
         new_events(:, 1) = i_train;
         event_set = cat(1, event_set, new_events);
     end
@@ -104,8 +112,10 @@ end
 
 function collision_score = collisionPenalties(network, traj_set, min_separation, max_speed)
     %% Evaluates a set of train trajectories
+
     % trajectory_set dimensions (n_trains, 3, timestep)
     % trajectory_set values (edge 0-n, position on edge 0-1, train orientation on edge -1,1)
+
     collision_score = 0;
 
     % Separation Penalties
@@ -135,8 +145,10 @@ end
 
 function destination_score = destinationPenalties(network, traj_set, destinations)
     %% Penalizes train's distance from destination and speed>0 at the end of the trajectory
+
     % destinations dimensions (1, n_nodes)
     % destinations values (destination_node_idx)
+
     destination_score = 0;
 
     for i_train = 1:size(traj_set, 1)
@@ -152,13 +164,14 @@ function destination_score = destinationPenalties(network, traj_set, destination
         distance = min([dist1, dist2]);
         destination_score = destination_score - distance / 10;
     end
-
 end
 
 function [demand_score, transfer_graph_digraph, edge_flows] = demandSatisfaction(network, event_set, demand_matrix, max_changeover_time, train_capacity)
     %% Evaluates satisfied node-to-node demand for a given set of arrival/departure timesteps 
+
     % event_set dimenstions (3, n))
     % event_set values (presence_at_node, timestep, train)
+
     assert(all(size(demand_matrix) == size(network.adjacency_matrix)));
 
     if isempty(event_set)
