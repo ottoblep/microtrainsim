@@ -87,8 +87,8 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
                 deadend_next_pivot_timestep = params.n_timesteps;
             end
 
-            % Modify curve so dead end is no longer hit 
-            [position, speeds, start_braking_timestep] = addStop(params, position, speeds, pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position, 0);
+            % Modify curve so dead end is no longer hit
+            [position, speeds, start_braking_timestep] = addStop(params, position, speeds, next_pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position, 0);
 
             % Revisit some past events with new curve
             sim_events = sim_events(sim_events(:, 1) < start_braking_timestep, :);
