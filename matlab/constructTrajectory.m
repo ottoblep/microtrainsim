@@ -104,7 +104,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
             next_edge = viable_next_edges(next_edge_selection);
 
             % Check for a scheduled stop that has not yet been visited
-            if ismember(next_edge, planned_stops(:,2))
+            if ismember(next_edge, planned_stops(:,1))
                 departure_timestep = min(next_pivot_timestep + params.dwell_timesteps, params.n_timesteps);
                 [position, speeds, start_braking_timestep] = addStop(params, position, speeds, next_pivot_timestep, departure_timestep, initial_speed, initial_position, 1);
                 planned_stops(planned_stops(:,2) == next_edge, :) = 0; % Remove planned stop
@@ -144,7 +144,7 @@ function [position, speeds, start_braking_timestep] = addStop(params, position, 
     d = abs(position(first_approach_idx:arrival_timestep) - position(arrival_timestep));
     start_braking_timestep = first_approach_idx + find(d < d_brake, 1, 'first') + (2 * overshoot - 1);
     if isempty(start_braking_timestep)
-        start_braking_timestep = 1;
+        start_braking_timestep = first_approach_idx;
     end
 
     % Calculate braking curve
@@ -161,6 +161,13 @@ function [position, speeds, start_braking_timestep] = addStop(params, position, 
     end
     end_braking_timestep = start_braking_timestep + n_full_braking_steps;
 
+    clf; hold on;
+    scatter(first_approach_idx, position(first_approach_idx),'DisplayName','first approach idx');
+    scatter(start_braking_timestep, position(start_braking_timestep), 'DisplayName','start braking timestep');
+    scatter(end_braking_timestep, position(end_braking_timestep),'DisplayName','end braking timestep');
+    plot(1:params.n_timesteps, speeds,'DisplayName','speeds old');
+    plot(1:params.n_timesteps, position,'DisplayName','position old');
+
     % Adjust acceleration values
     acceleration = [speeds(1)-initial_speed diff(speeds)];
     acceleration(start_braking_timestep:end_braking_timestep - 1) = -approach_direction * params.max_accel;
@@ -175,6 +182,10 @@ function [position, speeds, start_braking_timestep] = addStop(params, position, 
         speeds(start_braking_timestep:params.n_timesteps) = speeds(start_braking_timestep - 1) + cumsum(acceleration(start_braking_timestep:params.n_timesteps));
         position(start_braking_timestep:params.n_timesteps) = position(start_braking_timestep - 1) + cumsum(speeds(start_braking_timestep:params.n_timesteps));
     end
+
+    plot(1:params.n_timesteps, speeds,'DisplayName','speeds new');
+    plot(1:params.n_timesteps, position,'DisplayName','position new');
+    legend();
 
     assert((first_approach_idx <= start_braking_timestep) && (start_braking_timestep <= end_braking_timestep) && (end_braking_timestep <= departure_time));
 end
