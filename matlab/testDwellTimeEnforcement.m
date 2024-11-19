@@ -11,7 +11,7 @@ departure_timestep = 100;
 
 speeds = constructMovement(params, solution, initial_speed);
 position = cumsum(speeds);
-solution_new = addStop(params, position, speeds, solution, 50, 100, initial_speed, initial_position, 1);
+solution_new = addStop(params, position, speeds, solution, 50, 100, initial_speed, initial_position, true);
 speeds_new = constructMovement(params, solution_new, initial_speed);
 position_new = cumsum(speeds_new);
 
@@ -27,20 +27,37 @@ function solution = addStop(params, position, speeds, solution, arrival_timestep
 
     approach_direction = sign(speeds(arrival_timestep));
     % Only consider time since last direction change
-    first_approach_idx = find(sign(speeds(1:arrival_timestep)) ~= approach_direction, 1, 'last') + 1;
+    first_approach_idx = find(sign(speeds(1:arrival_timestep-1)) ~= approach_direction, 1, 'last') + 1;
     if isempty(first_approach_idx)
         first_approach_idx = 1;
     end
 
     % Select timestep to start braking (will over or undershoot due to discretization)
-    % Discrete Formula for distance covered under n full braking steps and
-    % one remainder braking step
+    % Discrete Formula for distance covered under n full braking steps and one remainder braking step
     possible_braking_timesteps = first_approach_idx:arrival_timestep;
     distance_from_stop = abs(position(possible_braking_timesteps) - position(arrival_timestep));
     n = floor(abs(speeds(possible_braking_timesteps)) / params.max_accel);
     distance_covered_under_braking = n .* (abs(speeds(possible_braking_timesteps)) - 0.5 * (n+1) .* params.max_accel);
-    [~, best_braking_idx] = min(abs(distance_covered_under_braking - distance_from_stop));
-    start_braking_timestep = first_approach_idx + best_braking_idx;
+    position_error = distance_covered_under_braking - distance_from_stop;
+    
+    if overshoot
+        subset_braking_idxs = find(position_error > 0);
+    else
+        subset_braking_idxs = find(position_error < 0);
+    end
+    if isempty(subset_braking_idxs)
+        warning("Failed to overshoot on braking.");
+        subset_braking_idxs = 1:numel(position_error);
+    end
+
+    [~, best_subset_braking_idx] = min(abs(position_error(subset_braking_idxs)));
+    start_braking_timestep = first_approach_idx +  subset_braking_idxs(best_subset_braking_idx);
+
+    %clf; hold on;
+    %plot(position_error)
+    %scatter(subset_braking_idxs(best_subset_braking_idx), position_error(subset_braking_idxs(best_subset_braking_idx)))
+    %scatter(subset_braking_idxs, position_error(subset_braking_idxs));
+    
     if isempty(start_braking_timestep)
         start_braking_timestep = first_approach_idx;
     end
