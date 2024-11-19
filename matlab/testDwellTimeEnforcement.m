@@ -9,10 +9,10 @@ solution = [randi([1,params.n_timesteps],1, params.n_speed_target_vars), rand(1,
 arrival_timestep = 50;
 departure_timestep = 100;
 
-speeds = constructMovement(params, solution, v_init);
+speeds = constructMovement(params, solution, initial_speed);
 position = cumsum(speeds);
 solution_new = addStop(params, position, speeds, solution, 50, 100, initial_speed, initial_position, 1);
-speeds_new = constructMovement(params, solution_new, v_init);
+speeds_new = constructMovement(params, solution_new, initial_speed);
 position_new = cumsum(speeds_new);
 
 clf; hold on;
@@ -33,20 +33,19 @@ function solution = addStop(params, position, speeds, solution, arrival_timestep
     end
 
     % Select timestep to start braking (will over or undershoot due to discretization)
-    % Discrete Formula for distance covered under k braking steps
-    % k*v(n) - a*k*(k+1)/2 
-    % maximum (stop point) at (v-a/2)/a
-    v = speeds(first_approach_idx:arrival_timestep);
-    k = floor(v./params.max_accel);
-    d_brake = k .* v - params.max_accel * k .* (k+1) * 0.5;
-    d = abs(position(first_approach_idx:arrival_timestep) - position(arrival_timestep));
-    start_braking_timestep = first_approach_idx + find(d < d_brake, 1, 'first') + (2 * overshoot - 1);
+    % Discrete Formula for distance covered under n full braking steps and
+    % one remainder braking step
+    possible_braking_timesteps = first_approach_idx:arrival_timestep;
+    distance_from_stop = abs(position(possible_braking_timesteps) - position(arrival_timestep));
+    n = floor(abs(speeds(possible_braking_timesteps)) / params.max_accel);
+    distance_covered_under_braking = n .* (abs(speeds(possible_braking_timesteps)) - 0.5 * (n+1) .* params.max_accel);
+    [~, best_braking_idx] = min(abs(distance_covered_under_braking - distance_from_stop));
+    start_braking_timestep = first_approach_idx + best_braking_idx;
     if isempty(start_braking_timestep)
         start_braking_timestep = first_approach_idx;
     end
-
+    
     % Adjust acceleration points
-
     v_target_timesteps = solution(1:params.n_speed_target_vars);
     v_target_values = solution(params.n_speed_target_vars + 1:2 * params.n_speed_target_vars);
     [v_target_timesteps, v_target_sorted_idxs] = sort(v_target_timesteps);
@@ -64,7 +63,7 @@ function solution = addStop(params, position, speeds, solution, arrival_timestep
     solution(params.n_speed_target_vars + 1:2 * params.n_speed_target_vars) = v_target_values;
 end
 
-function speeds = constructMovement(params, solution, v_init)
+function speeds = constructMovement(params, solution, initial_speed)
     %% Constructs physically possible speed and position curves from target speeds points
     v_target_timesteps = solution(1:params.n_speed_target_vars);
     v_target_values = solution(params.n_speed_target_vars + 1:2 * params.n_speed_target_vars);
@@ -76,7 +75,7 @@ function speeds = constructMovement(params, solution, v_init)
     v_target = interp1(v_target_timesteps, v_target_values, 1:params.n_timesteps, 'previous');
 
     speeds = zeros(1, params.n_timesteps);
-    speeds(1) = params.initial_speed;
+    speeds(1) = initial_speed;
     for i = 2:params.n_timesteps
         diff = v_target(i) - speeds(i-1);
         speeds(i) = speeds(i-1) + sign(diff) * min(abs(diff), params.max_accel);
