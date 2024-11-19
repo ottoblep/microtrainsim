@@ -1,15 +1,15 @@
 function [traj,arrival_events] = constructTrajectory(network, params, solution, initial_position, initial_speed, planned_stops)
     %% Constructs a single train trajectory on the graph
 
-    % Acceleration vars are a sparse representation of the acceleration curves.
+    % Target velocity vars are a sparse representation of the target velocity curves.
     % They are made up of support points (time-value pairs) that are then interpolated during trajectory construction.
     % This reduces the variable count and produces less erratic movement.
     % Switch directions are represent the next edge when hitting a node 
     % Planned stops are made automatically when the corresponding edge is passed and speed is slow enough
 
-    % solution dimensions ( 2 * n_acceleration_vars + n_switch_vars )
-    % solution values (accel_time 0-1, accel_value 0-1, switch_direction 0-1)
-    % solution serialization (accel_timesteps, accel_values, sw_direction)
+    % solution dimensions ( 2 * n_v_target_vars + n_switch_vars )
+    % solution values (v_target_time 0-1, v_target_value 0-1, switch_direction 0-1)
+    % solution serialization (v_target_timesteps, v_target_values, sw_direction)
 
     % initial position dimensions (3)
     % initial position values (edge 0-n, position on edge 0-1, train orientation on edge -1, 1)
@@ -37,12 +37,8 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
     %% This is the event-based part of the simulation
     % Also enforces stopping for scheduled edges and dead ends
 
-    acceleration = interpolateSolutionCurve(solution(1:params.n_acceleration_vars)*params.n_timesteps, solution(params.n_acceleration_vars+1:2*params.n_acceleration_vars), 1:params.n_timesteps);
-    acceleration =  (acceleration * 2 - 1) * params.max_accel;
-    switch_directions = solution(2 * params.n_acceleration_vars + 1:2 * params.n_acceleration_vars + params.n_switch_vars);
-    speeds = initial_speed + cumsum(acceleration);
-    speeds(speeds>params.max_speed) = params.max_speed;
-    speeds(speeds<-params.max_speed) = -params.max_speed;
+    switch_directions = solution(2 * params.n_v_target_vars + 1:2 * params.n_v_target_vars + params.n_switch_vars);
+    speeds = constructMovement(params, solution, initial_speed);
     position = cumsum(speeds);
 
     sim_events(1,:) = [1 initial_position(1) initial_position(2) initial_position(3)];
@@ -87,7 +83,9 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
             % Modify curve so dead end is no longer hit
             assert(next_pivot_timestep < deadend_next_pivot_timestep);
-            [position, speeds, start_braking_timestep] = addStop(params, position, speeds, next_pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position, 0);
+            [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position, false);
+            speeds = constructMovement(params, solution, initial_speed);
+            position = cumsum(speeds);
 
             % Revisit some past events that may have changed timing 
             sim_events = sim_events(sim_events(:, 1) < start_braking_timestep, :);
@@ -105,9 +103,22 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
             % Check for a scheduled stop that has not yet been visited
             if ismember(next_edge, planned_stops(:,1))
-                departure_timestep = min(next_pivot_timestep + params.dwell_timesteps, params.n_timesteps);
-                [position, speeds, start_braking_timestep] = addStop(params, position, speeds, next_pivot_timestep, departure_timestep, initial_speed, initial_position, 1);
                 planned_stops(planned_stops(:,2) == next_edge, :) = 0; % Remove planned stop
+                departure_timestep = min(next_pivot_timestep + params.dwell_timesteps, params.n_timesteps);
+
+                [solution, ~] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, initial_speed, initial_position, true);
+                speeds = constructMovement(params, solution, initial_speed);
+                position = cumsum(speeds);
+
+                % Revisit some past events that may have changed timing 
+                sim_events = sim_events(sim_events(:, 1) < start_braking_timestep, :);
+                if isempty(sim_events)
+                    sim_events(1,:) = [1 initial_position(1) initial_position(2) initial_position(3)];
+                    pivot_timestep = 1;
+                else
+                    pivot_timestep = sim_events(end, 1);
+                end
+                i_edge_change = size(sim_events, 1);
             end
 
             edge_entrance_point = (network.edge_cols(next_edge) == traversed_node);
@@ -121,73 +132,6 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
             i_edge_change = i_edge_change + 1;
         end
     end
-end
-
-function [position, speeds, start_braking_timestep] = addStop(params, position, speeds, arrival_timestep, departure_time, initial_speed, initial_position, overshoot)
-    %% Modifies position curve to stop around a certain position indicated by a timestep on the old curve
-
-    approach_direction = sign(speeds(arrival_timestep));
-    pre_stop_timesteps = 1:arrival_timestep;
-    % Only consider time since last direction change
-    first_approach_idx = find(sign(speeds(1:arrival_timestep)) ~= approach_direction, 1, 'last') + 1;
-    if isempty(first_approach_idx)
-        first_approach_idx = 1;
-    end
-
-    % Select timestep to start braking (will over or undershoot due to discretization)
-    % Discrete Formula for distance covered under k braking steps
-    % k*v(n) - a*k*(k+1)/2 
-    % maximum (stop point) at (v-a/2)/a
-    v = speeds(first_approach_idx:arrival_timestep);
-    k = floor(v./params.max_accel);
-    d_brake = k .* v - params.max_accel * k .* (k+1) * 0.5;
-    d = abs(position(first_approach_idx:arrival_timestep) - position(arrival_timestep));
-    start_braking_timestep = first_approach_idx + find(d < d_brake, 1, 'first') + (2 * overshoot - 1);
-    if isempty(start_braking_timestep)
-        start_braking_timestep = first_approach_idx;
-    end
-
-    % Calculate braking curve
-    if start_braking_timestep == 1
-        n_full_braking_steps = floor(abs(initial_speed)/params.max_accel);
-        a_last_step = abs(initial_speed) - n_full_braking_steps * params.max_accel;
-    else
-        n_full_braking_steps = floor(abs(speeds(start_braking_timestep-1))/params.max_accel);
-        a_last_step = abs(speeds(start_braking_timestep-1)) - n_full_braking_steps * params.max_accel;
-    end
-    if all(n_full_braking_steps + 1 > params.n_timesteps - start_braking_timestep)
-        warning("Not enough time to brake.");
-        return;
-    end
-    end_braking_timestep = start_braking_timestep + n_full_braking_steps;
-
-    clf; hold on;
-    scatter(first_approach_idx, position(first_approach_idx),'DisplayName','first approach idx');
-    scatter(start_braking_timestep, position(start_braking_timestep), 'DisplayName','start braking timestep');
-    scatter(end_braking_timestep, position(end_braking_timestep),'DisplayName','end braking timestep');
-    plot(1:params.n_timesteps, speeds,'DisplayName','speeds old');
-    plot(1:params.n_timesteps, position,'DisplayName','position old');
-
-    % Adjust acceleration values
-    acceleration = [speeds(1)-initial_speed diff(speeds)];
-    acceleration(start_braking_timestep:end_braking_timestep - 1) = -approach_direction * params.max_accel;
-    acceleration(end_braking_timestep) = -approach_direction * a_last_step;
-    acceleration(end_braking_timestep+1:departure_time) = 0;
-
-    % Recalculate positions
-    if start_braking_timestep == 1
-        speeds = initial_speed + cumsum(acceleration);
-        position = cumsum(speeds);
-    else
-        speeds(start_braking_timestep:params.n_timesteps) = speeds(start_braking_timestep - 1) + cumsum(acceleration(start_braking_timestep:params.n_timesteps));
-        position(start_braking_timestep:params.n_timesteps) = position(start_braking_timestep - 1) + cumsum(speeds(start_braking_timestep:params.n_timesteps));
-    end
-
-    plot(1:params.n_timesteps, speeds,'DisplayName','speeds new');
-    plot(1:params.n_timesteps, position,'DisplayName','position new');
-    legend();
-
-    assert((first_approach_idx <= start_braking_timestep) && (start_braking_timestep <= end_braking_timestep) && (end_braking_timestep <= departure_time));
 end
 
 function traj = assignTrajectory(network, params, position, sim_events, initial_position)
@@ -214,10 +158,80 @@ function traj = assignTrajectory(network, params, position, sim_events, initial_
     end
 end
 
-function y_new = interpolateSolutionCurve(x, y, x_new)
-    %% Interpolate sparse curve representation to continuous one and normalize
-    [~ , unique_idxs, ~] = unique(x);
-    y_new = interp1(x(unique_idxs), y(unique_idxs), x_new, 'linear', 'extrap');
-    y_new(y_new>1) = 1;
-    y_new(y_new<0) = 0;
+function [solution, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, initial_speed, initial_position, overshoot)
+    %% Modifies solution to stop around a certain position defined by a timestep on the old position curve
+
+    approach_direction = sign(speeds(arrival_timestep));
+    % Only consider time since last direction change
+    first_approach_idx = find(sign(speeds(1:arrival_timestep-1)) ~= approach_direction, 1, 'last') + 1;
+    if isempty(first_approach_idx)
+        first_approach_idx = 1;
+    end
+
+    % Select timestep to start braking (will over or undershoot due to discretization)
+    % Discrete Formula for distance covered under n full braking steps and one remainder braking step
+    possible_braking_timesteps = first_approach_idx:arrival_timestep;
+    distance_from_stop = abs(position(possible_braking_timesteps) - position(arrival_timestep));
+    n = floor(abs(speeds(possible_braking_timesteps)) / params.max_accel);
+    distance_covered_under_braking = n .* (abs(speeds(possible_braking_timesteps)) - 0.5 * (n+1) .* params.max_accel);
+    position_error = distance_covered_under_braking - distance_from_stop;
+    
+    if overshoot
+        subset_braking_idxs = find(position_error > 0);
+    else
+        subset_braking_idxs = find(position_error < 0);
+    end
+    if isempty(subset_braking_idxs)
+        warning("Failed to overshoot on braking.");
+        subset_braking_idxs = 1:numel(position_error);
+    end
+
+    [~, best_subset_braking_idx] = min(abs(position_error(subset_braking_idxs)));
+    start_braking_timestep = first_approach_idx +  subset_braking_idxs(best_subset_braking_idx);
+
+    if isempty(start_braking_timestep)
+        start_braking_timestep = first_approach_idx;
+    end
+    
+    % Adjust target velocity points
+    v_target_timesteps = solution(1:params.n_v_target_vars);
+    v_target_values = solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars);
+    [v_target_timesteps, v_target_sorted_idxs] = sort(v_target_timesteps);
+    v_target_values = v_target_values(v_target_sorted_idxs);
+
+    % Stay stationary 
+    idxs_v_targets_during_stop = (v_target_timesteps >= start_braking_timestep) & (v_target_timesteps <= departure_time);
+    v_target_values(idxs_v_targets_during_stop) = 0.5;
+    % Start braking instantly
+    idx_v_target_to_shift = find(v_target_timesteps > start_braking_timestep, 1, 'first');
+    v_target_timesteps(idx_v_target_to_shift) = start_braking_timestep;
+    v_target_values(idx_v_target_to_shift) = 0.5;
+
+    solution(1:params.n_v_target_vars) = v_target_timesteps;
+    solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars) = v_target_values;
+end
+
+function speeds = constructMovement(params, solution, initial_speed)
+    %% Constructs physically possible speed and position curves from target speeds points
+    v_target_timesteps = solution(1:params.n_v_target_vars) * params.n_timesteps;
+    [~, first_v_target_timestep_idx] = min(v_target_timesteps);
+    v_target_timesteps(first_v_target_timestep_idx) = 1;
+    [v_target_timesteps , unique_idxs, ~] = unique(v_target_timesteps);
+
+    v_target_values = solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars);
+    v_target_values = (2 * v_target_values(unique_idxs) - 1) * params.max_speed;
+    
+    v_target = interp1(v_target_timesteps, v_target_values, 1:params.n_timesteps, 'previous');
+
+    speeds = zeros(1, params.n_timesteps);
+    speeds(1) = initial_speed;
+    for i = 2:params.n_timesteps
+        diff = v_target(i) - speeds(i-1);
+        speeds(i) = speeds(i-1) + sign(diff) * min(abs(diff), params.max_accel);
+    end
+
+    % clf; hold on;
+    % scatter(v_target_timesteps, v_target_values);
+    % plot(v_target);
+    % plot(speeds);
 end

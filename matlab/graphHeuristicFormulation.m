@@ -37,7 +37,7 @@ function [network, params] = generateEnvironment(network_template)
 
     %% Simulation Parameters
     params.n_timesteps = 200; % 10s timesteps
-    params.n_acceleration_vars = params.n_timesteps / 4; % Support points for acceleration
+    params.n_v_target_vars = params.n_timesteps / 4; % Support points for target velocity
     params.min_separation = 100; % m
     params.max_speed = 83; % m/10s = 20km/h
     params.max_accel = 46.27; % m/(10s)² = 0-100kmh in 1m
@@ -61,7 +61,7 @@ end
 function [traj_set, event_set] = constructTrajectorySet(network, params, solution)
     %% Constructs a set of train trajectories on the graph
 
-    % solution dimensions (n_trains, 2 * n_acceleration_vars + n_switch_vars)
+    % solution dimensions (n_trains, 2 * n_v_target_vars + n_switch_vars)
 
     % initial position dimensions (n_trains, 3)
     % initial speed dimensions (n_trains)
@@ -200,7 +200,7 @@ end
 %% Solution Generation 
 
 function solution = randomSolution(params)
-    solution = rand(params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars);
+    solution = rand(params.n_trains, 2 * params.n_v_target_vars + params.n_switch_vars);
 end
 
 function [solution, traj_set, round_best_score] = greedySolution(network, params, per_train_stall_time)
@@ -266,10 +266,10 @@ end
 
 function [solution, traj_set] = geneticGlobalSearch(network, params)
     %% Run genetic algorithm globally over collision and objective
-    nvars = params.n_trains * 2 * params.n_acceleration_vars + params.n_switch_vars;
+    nvars = params.n_trains * 2 * params.n_v_target_vars + params.n_switch_vars;
     % GA uses a nvars^2 matrix for mutation costing a lot of memory
     % GA wants normalized parameters
-    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars) + 0.5);
+    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 2 * params.n_v_target_vars + params.n_switch_vars) + 0.5);
     options = optimoptions('ga', ...
         'Display','diagnose', ...
         'UseParallel', true, ...
@@ -279,16 +279,16 @@ function [solution, traj_set] = geneticGlobalSearch(network, params)
         );
     [X, fval, exitflag, output, population, scores] = ga(obj_fun, nvars, [], [], [], [], -0.5 * ones(nvars, 1), 0.5 * ones(nvars, 1), [], options);
     % Save result
-    solution = reshape(X, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars) + 0.5;
+    solution = reshape(X, params.n_trains, 2 * params.n_v_target_vars + params.n_switch_vars) + 0.5;
     [traj_set, ~] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
 end
 
 function [solution, traj_set] = particleSwarmSearch(network, params)
     %% Run particle swarm optimization globally over collision and objective
-    nvars = params.n_trains * 2 * params.n_acceleration_vars + params.n_switch_vars;
+    nvars = params.n_trains * 2 * params.n_v_target_vars + params.n_switch_vars;
     % GA uses a nvars^2 matrix for mutation costing a lot of memory
     % GA wants normalized parameters
-    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars) + 0.5);
+    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 2 * params.n_v_target_vars + params.n_switch_vars) + 0.5);
     options = optimoptions('particleswarm', ...
         'Display','iter', ...
         'UseParallel', true, ...
@@ -298,13 +298,13 @@ function [solution, traj_set] = particleSwarmSearch(network, params)
         );
     [X, fval, exitflag, output, scores] = particleswarm(obj_fun, nvars, -0.5 * ones(nvars, 1), 0.5 * ones(nvars, 1), options);
     % Save result
-    solution = reshape(X, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars) + 0.5;
+    solution = reshape(X, params.n_trains, 2 * params.n_v_target_vars + params.n_switch_vars) + 0.5;
     [traj_set, ~] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
 end
 
 function [solution, traj_set] = refineSolution(network, params, solution, traj_set)
-    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars));
-    nvars = params.n_trains * 2 * params.n_acceleration_vars + params.n_switch_vars;
+    obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 2 * params.n_v_target_vars + params.n_switch_vars));
+    nvars = params.n_trains * 2 * params.n_v_target_vars + params.n_switch_vars;
     options = optimoptions('patternsearch', ...
         'Display','iter', ...
         'UseParallel', true, ...
@@ -312,6 +312,6 @@ function [solution, traj_set] = refineSolution(network, params, solution, traj_s
         'MeshTolerance', 0.02 ...
         );
     X = patternsearch(obj_fun, solution, [], [], [], [], zeros(nvars, 1), ones(nvars, 1), [], options);
-    solution = reshape(X, params.n_trains, 2 * params.n_acceleration_vars + params.n_switch_vars);
+    solution = reshape(X, params.n_trains, 2 * params.n_v_target_vars + params.n_switch_vars);
     [traj_set, ~, ~] = constructTrajectorySet(network, solution, params.initial_positions, params.initial_speeds, params.max_accel, params.max_speed, params.interpolation_factor);
 end

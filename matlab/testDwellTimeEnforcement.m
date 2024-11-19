@@ -1,7 +1,7 @@
 params.n_timesteps = 200; % 10s timesteps
 params.max_speed = 830; % m/10s = 200km/h
 params.max_accel = 46.27; % m/(10s)² = 0-100kmh in 1m
-params.n_speed_target_vars = params.n_timesteps / 4; % Support points for acceleration
+params.n_speed_target_vars = params.n_timesteps / 4; % Support points for target velocity
 params.n_switch_vars = 20; % unused dummy
 initial_position = 3;
 initial_speed = (rand(1,1) * 2 - 1) * params.max_speed;
@@ -22,7 +22,7 @@ plot(speeds_new);
 plot(position);
 plot(position_new);
 
-function solution = addStop(params, position, speeds, solution, arrival_timestep, departure_time, initial_speed, initial_position, overshoot)
+function [solution, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, initial_speed, initial_position, overshoot)
     %% Modifies solution to stop around a certain position defined by a timestep on the old position curve
 
     approach_direction = sign(speeds(arrival_timestep));
@@ -62,7 +62,7 @@ function solution = addStop(params, position, speeds, solution, arrival_timestep
         start_braking_timestep = first_approach_idx;
     end
     
-    % Adjust acceleration points
+    % Adjust v_target points
     v_target_timesteps = solution(1:params.n_speed_target_vars);
     v_target_values = solution(params.n_speed_target_vars + 1:2 * params.n_speed_target_vars);
     [v_target_timesteps, v_target_sorted_idxs] = sort(v_target_timesteps);
