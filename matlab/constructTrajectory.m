@@ -189,7 +189,7 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
         start_braking_timestep = first_approach_idx;
     end
     
-    v_target_timesteps = solution(1:params.n_v_target_vars) * params.n_timesteps; 
+    v_target_timesteps = floor(solution(1:params.n_v_target_vars) * params.n_timesteps); 
     v_target_values = (2 * solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars) - 1) * params.max_speed;
     
     % Adjust target velocity points
@@ -209,7 +209,7 @@ end
 
 function speeds = constructMovement(params, solution, initial_speed)
     %% Constructs physically possible speed and position curves from target speeds points
-    v_target_timesteps = solution(1:params.n_v_target_vars) * params.n_timesteps;
+    v_target_timesteps = floor(solution(1:params.n_v_target_vars) * params.n_timesteps);
     [~, first_v_target_timestep_idx] = min(v_target_timesteps);
     v_target_timesteps(first_v_target_timestep_idx) = 1;
     [v_target_timesteps , unique_idxs, ~] = unique(v_target_timesteps);
