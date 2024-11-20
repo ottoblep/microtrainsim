@@ -83,7 +83,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
             % Modify curve so dead end is no longer hit
             assert(next_pivot_timestep < deadend_next_pivot_timestep);
-            [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position, false);
+            [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, false);
             speeds = constructMovement(params, solution, initial_speed);
             position = cumsum(speeds);
 
@@ -106,7 +106,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
                 planned_stops(planned_stops(:,2) == next_edge, :) = 0; % Remove planned stop
                 departure_timestep = min(next_pivot_timestep + params.dwell_timesteps, params.n_timesteps);
 
-                [solution, ~] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, initial_speed, initial_position, true);
+                [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, true);
                 speeds = constructMovement(params, solution, initial_speed);
                 position = cumsum(speeds);
 
@@ -158,7 +158,7 @@ function traj = assignTrajectory(network, params, position, sim_events, initial_
     end
 end
 
-function [solution, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, initial_speed, initial_position, overshoot)
+function [solution, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, overshoot)
     %% Modifies solution to stop around a certain position defined by a timestep on the old position curve
 
     approach_direction = sign(speeds(arrival_timestep));
