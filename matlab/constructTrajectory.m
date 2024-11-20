@@ -76,7 +76,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
         revisit_events = false;
         if isempty(viable_next_edges)
-            % Find time train would turn around 
+            % Find next timestep where train turns around 
             deadend_next_pivot_timestep = next_pivot_timestep - 1 + find(sign(speeds(next_pivot_timestep:params.n_timesteps)) ~= node_traversal_direction, 1, 'first');
             if isempty(deadend_next_pivot_timestep)
                 deadend_next_pivot_timestep = params.n_timesteps;
@@ -191,11 +191,14 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
     v_target_values = (2 * solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars) - 1) * params.max_speed;
     
     % Adjust target velocity points
+
     [v_target_timesteps, v_target_sorted_idxs] = sort(v_target_timesteps);
     v_target_values = v_target_values(v_target_sorted_idxs);
-    % Stay stationary 
+
+    % Stay stationary during dwell time
     idxs_v_targets_during_stop = (v_target_timesteps >= start_braking_timestep) & (v_target_timesteps <= departure_time);
     v_target_values(idxs_v_targets_during_stop) = 0;
+
     % Place speed target point of 0 at the start of braking 
     idx_v_target_to_shift = find(v_target_timesteps > start_braking_timestep, 1, 'first');
     v_target_timesteps(idx_v_target_to_shift) = start_braking_timestep;
