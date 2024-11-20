@@ -84,7 +84,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
             % Modify curve so dead end is no longer hit
             assert(next_pivot_timestep < deadend_next_pivot_timestep);
-            [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, false);
+            [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, false, initial_speed, initial_position);
             speeds = constructMovement(params, solution, initial_speed);
             position = cumsum(speeds);
             revisit_events = true;
@@ -98,7 +98,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
                 planned_stops(planned_stops(:,1) == next_edge, :) = 0; % Remove planned stop
                 departure_timestep = min(next_pivot_timestep + params.dwell_timesteps, params.n_timesteps);
 
-                [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, true);
+                [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, true, initial_speed, initial_position);
                 speeds = constructMovement(params, solution, initial_speed);
                 position = cumsum(speeds);
                 revisit_events = true;
@@ -154,7 +154,7 @@ function traj = assignTrajectory(network, params, position, sim_events, initial_
     end
 end
 
-function [solution, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, overshoot)
+function [solution, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, overshoot, initial_speed, initial_position)
     %% Modifies solution to stop around a certain position defined by a timestep on the old position curve
 
     approach_direction = sign(speeds(arrival_timestep));
@@ -198,13 +198,24 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
     % Stay stationary 
     idxs_v_targets_during_stop = (v_target_timesteps >= start_braking_timestep) & (v_target_timesteps <= departure_time);
     v_target_values(idxs_v_targets_during_stop) = 0;
-    % Start braking instantly
+    % Place speed target point of 0 at the start of braking 
     idx_v_target_to_shift = find(v_target_timesteps > start_braking_timestep, 1, 'first');
     v_target_timesteps(idx_v_target_to_shift) = start_braking_timestep;
     v_target_values(idx_v_target_to_shift) = 0;
 
     solution(1:params.n_v_target_vars) = v_target_timesteps / params.n_timesteps;
     solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars) = 0.5 * (v_target_values / params.max_speed) + 0.5 ;
+
+    clf; hold on;
+    plot(position,'DisplayName',"position old");
+    plot(speeds,'DisplayName',"speeds old");
+    speeds_new = constructMovement(params, solution, initial_speed);
+    position_new = cumsum(speeds);
+    plot(position_new,'DisplayName',"position new");
+    plot(speeds_new,'DisplayName',"speeds new");
+    scatter(start_braking_timestep, 400);
+    scatter(v_target_timesteps, v_target_values);
+    legend();
 end
 
 function speeds = constructMovement(params, solution, initial_speed)
