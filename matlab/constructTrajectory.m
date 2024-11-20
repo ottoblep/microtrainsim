@@ -74,6 +74,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
         viable_next_edges = network.adjacent_edge_list{traversed_node};
         viable_next_edges = viable_next_edges(viable_next_edges~=sim_events(i_edge_change, 2));
 
+        revisit_events = false;
         if isempty(viable_next_edges)
             % Find time train would turn around 
             deadend_next_pivot_timestep = next_pivot_timestep - 1 + find(sign(speeds(next_pivot_timestep:params.n_timesteps)) ~= node_traversal_direction, 1, 'first');
@@ -86,16 +87,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
             [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, false);
             speeds = constructMovement(params, solution, initial_speed);
             position = cumsum(speeds);
-
-            % Revisit some past events that may have changed timing 
-            sim_events = sim_events(sim_events(:, 1) < start_braking_timestep, :);
-            if isempty(sim_events)
-                sim_events(1,:) = [1 initial_position(1) initial_position(2) initial_position(3)];
-                pivot_timestep = 1;
-            else
-                pivot_timestep = sim_events(end, 1);
-            end
-            i_edge_change = size(sim_events, 1);
+            revisit_events = true;
         else
             % Decide next edge
             next_edge_selection = 1 + round(switch_directions(i_edge_change) * (length(viable_next_edges) - 1));
@@ -109,8 +101,12 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
                 [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, true);
                 speeds = constructMovement(params, solution, initial_speed);
                 position = cumsum(speeds);
+                revisit_events = true;
+            end
+        end
 
-                % Revisit some past events that may have changed timing 
+        if revisit_events
+            % Reevaluate events from where position curve was modified
                 sim_events = sim_events(sim_events(:, 1) < start_braking_timestep, :);
                 if isempty(sim_events)
                     sim_events(1,:) = [1 initial_position(1) initial_position(2) initial_position(3)];
@@ -119,6 +115,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
                     pivot_timestep = sim_events(end, 1);
                 end
                 i_edge_change = size(sim_events, 1);
+            continue;
             end
 
             edge_entrance_point = (network.edge_cols(next_edge) == traversed_node);
@@ -130,7 +127,6 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
             pivot_timestep = next_pivot_timestep;
             i_edge_change = i_edge_change + 1;
-        end
     end
 end
 
