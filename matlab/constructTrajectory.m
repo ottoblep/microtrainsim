@@ -84,7 +84,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
             % Modify curve so dead end is no longer hit
             assert(next_pivot_timestep < deadend_next_pivot_timestep);
-            [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, false, initial_speed, initial_position);
+            [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position);
             speeds = constructMovement(params, solution, initial_speed);
             position = cumsum(speeds);
             revisit_events = true;
@@ -93,12 +93,13 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
             next_edge_selection = 1 + round(switch_directions(i_edge_change) * (length(viable_next_edges) - 1));
             next_edge = viable_next_edges(next_edge_selection);
 
-            % Check for a scheduled stop that has not yet been visited
-            if ismember(next_edge, planned_stops(:,1))
-                planned_stops(planned_stops(:,1) == next_edge, :) = 0; % Remove planned stop
+            % Check if leaving a scheduled stop edge that has not yet been visited
+            % Planned stop edges for one train must not be adjacent
+            if ismember(sim_events(i_edge_change, 2), planned_stops(:,1)) && ~ismember(next_edge, planned_stops(:,1))
+                planned_stops(planned_stops(:,1) == sim_events(i_edge_change, 2), :) = 0; % Remove planned stop
                 departure_timestep = min(next_pivot_timestep + params.dwell_timesteps, params.n_timesteps);
 
-                [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, true, initial_speed, initial_position);
+                [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, initial_speed, initial_position);
                 speeds = constructMovement(params, solution, initial_speed);
                 position = cumsum(speeds);
                 revisit_events = true;
@@ -154,7 +155,7 @@ function traj = assignTrajectory(network, params, position, sim_events, initial_
     end
 end
 
-function [solution, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, overshoot, initial_speed, initial_position)
+function [solution, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, initial_speed, initial_position)
     %% Modifies solution to stop around a certain position defined by a timestep on the old position curve
 
     approach_direction = sign(speeds(arrival_timestep));
@@ -164,7 +165,7 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
         first_approach_idx = 1;
     end
 
-    % Select timestep to start braking (will over or undershoot due to discretization)
+    % Select timestep to start braking (will purposefully undershoot due to discretization)
     % Discrete Formula for distance covered under n full braking steps and one remainder braking step
     possible_braking_timesteps = first_approach_idx:arrival_timestep;
     distance_from_stop = abs(position(possible_braking_timesteps) - position(arrival_timestep));
@@ -172,13 +173,10 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
     distance_covered_under_braking = n .* (abs(speeds(possible_braking_timesteps)) - 0.5 * (n+1) .* params.max_accel);
     position_error = distance_covered_under_braking - distance_from_stop;
     
-    if overshoot
-        subset_braking_idxs = find(position_error > 0);
-    else
         subset_braking_idxs = find(position_error < 0);
-    end
+
     if isempty(subset_braking_idxs)
-        warning("Failed to overshoot on braking.");
+        warning("Failed to undershoot on braking.");
         subset_braking_idxs = 1:numel(position_error);
     end
 
