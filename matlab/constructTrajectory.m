@@ -238,10 +238,14 @@ function speeds = constructMovement(params, solution, initial_speed)
     v_target = interp1(v_target_timesteps, v_target_values, 1:params.n_timesteps, 'previous');
 
     speeds = zeros(1, params.n_timesteps);
-    speeds(1) = initial_speed;
     for i = 2:params.n_timesteps
+        if i == 1
+            diff = v_target(i) - initial_speed;
+            speeds(i) = initial_speed + sign(diff) * min(abs(diff), params.max_accel);
+        else
         diff = v_target(i) - speeds(i-1);
         speeds(i) = speeds(i-1) + sign(diff) * min(abs(diff), params.max_accel);
+        end
     end
 
     % clf; hold on;
