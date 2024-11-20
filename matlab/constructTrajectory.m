@@ -95,7 +95,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
             % Check for a scheduled stop that has not yet been visited
             if ismember(next_edge, planned_stops(:,1))
-                planned_stops(planned_stops(:,2) == next_edge, :) = 0; % Remove planned stop
+                planned_stops(planned_stops(:,1) == next_edge, :) = 0; % Remove planned stop
                 departure_timestep = min(next_pivot_timestep + params.dwell_timesteps, params.n_timesteps);
 
                 [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, true);
