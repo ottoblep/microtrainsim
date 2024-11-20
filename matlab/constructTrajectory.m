@@ -221,9 +221,15 @@ end
 
 function speeds = constructMovement(params, solution, initial_speed)
     %% Constructs physically possible speed and position curves from target speeds points
+    % Round to discrete timestep
     v_target_timesteps = floor(solution(1:params.n_v_target_vars) * params.n_timesteps);
+    v_target_timesteps(v_target_timesteps == 0) = 1;
+
+    % Stretch to timestep 1
     [~, first_v_target_timestep_idx] = min(v_target_timesteps);
     v_target_timesteps(first_v_target_timestep_idx) = 1;
+
+    % Remove collisions
     [v_target_timesteps , unique_idxs, ~] = unique(v_target_timesteps);
 
     v_target_values = solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars);
