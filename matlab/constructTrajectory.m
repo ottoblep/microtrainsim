@@ -159,7 +159,7 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
 
     approach_direction = sign(speeds(arrival_timestep));
     % Only consider time since last direction change
-    first_approach_idx = find(sign(speeds(1:arrival_timestep-1)) ~= approach_direction, 1, 'last') + 1;
+    first_approach_idx = find(sign(speeds(1:arrival_timestep-1)) == -approach_direction, 1, 'last') + 1;
     if isempty(first_approach_idx)
         first_approach_idx = 1;
     end
@@ -183,28 +183,28 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
     end
 
     [~, best_subset_braking_idx] = min(abs(position_error(subset_braking_idxs)));
-    start_braking_timestep = first_approach_idx +  subset_braking_idxs(best_subset_braking_idx);
+    start_braking_timestep = first_approach_idx - 1 + subset_braking_idxs(best_subset_braking_idx);
 
     if isempty(start_braking_timestep)
         start_braking_timestep = first_approach_idx;
     end
     
+    v_target_timesteps = solution(1:params.n_v_target_vars) * params.n_timesteps; 
+    v_target_values = (2 * solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars) - 1) * params.max_speed;
+    
     % Adjust target velocity points
-    v_target_timesteps = solution(1:params.n_v_target_vars);
-    v_target_values = solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars);
     [v_target_timesteps, v_target_sorted_idxs] = sort(v_target_timesteps);
     v_target_values = v_target_values(v_target_sorted_idxs);
-
     % Stay stationary 
     idxs_v_targets_during_stop = (v_target_timesteps >= start_braking_timestep) & (v_target_timesteps <= departure_time);
-    v_target_values(idxs_v_targets_during_stop) = 0.5;
+    v_target_values(idxs_v_targets_during_stop) = 0;
     % Start braking instantly
     idx_v_target_to_shift = find(v_target_timesteps > start_braking_timestep, 1, 'first');
     v_target_timesteps(idx_v_target_to_shift) = start_braking_timestep;
-    v_target_values(idx_v_target_to_shift) = 0.5;
+    v_target_values(idx_v_target_to_shift) = 0;
 
-    solution(1:params.n_v_target_vars) = v_target_timesteps;
-    solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars) = v_target_values;
+    solution(1:params.n_v_target_vars) = v_target_timesteps / params.n_timesteps;
+    solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars) = 0.5 * (v_target_values / params.max_speed) + 0.5 ;
 end
 
 function speeds = constructMovement(params, solution, initial_speed)
