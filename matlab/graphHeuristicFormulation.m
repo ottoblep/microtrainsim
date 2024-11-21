@@ -6,8 +6,6 @@ function greedyHeuristicFormulation()
 
     [traj_set, arrival_events] = constructTrajectorySet(network, params, solution);
 
-    %[solution, traj_set] = greedySearch(network, params, true, 30, 0.01);
-    %disp("---");
     %[solution, traj_set] = greedySearch(network, params, false, 15, 0.1);
     %[solution, traj_set] = geneticGlobalSearch(network, params);
     %[solution, falsetraj_set] = particleSwarmSearch(network, params);
@@ -246,7 +244,7 @@ end
 
 %% Search Methods
 
-function [solution, traj_set] = greedySearch(network, params, only_valid_solutions, overall_stall_time, solution_stall_time)
+function [solution, traj_set] = greedySearch(network, params, overall_stall_time, solution_stall_time)
     %% Repeatedly generate greedy solutions 
     stall_timer = tic;
     best_solution_set = {[] -Inf [] []}; % traj_set, demand_score, transfer_graph_digraph, solution,
