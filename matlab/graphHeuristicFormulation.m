@@ -78,7 +78,7 @@ function [traj_set, event_set] = constructTrajectorySet(network, params, solutio
     event_set = [];
     traj_set = zeros(n_trains, 3, params.n_timesteps);
     for i_train = 1:n_trains
-        [traj_set(i_train, :, :), new_events] = constructTrajectory(network, params, solution(i_train,:), params.initial_positions(i_train, :), params.initial_speeds(i_train), params.planned_stops(params.planned_stops(:,1)==i_train, :));
+        [traj_set(i_train, :, :), new_events] = constructTrajectory(network, params, solution(i_train,:), params.initial_positions(i_train, :), params.initial_speeds(i_train), params.planned_stops(params.planned_stops(:,1)==i_train, 2:3));
         new_events(:, 1) = i_train;
         event_set = cat(1, event_set, new_events);
     end

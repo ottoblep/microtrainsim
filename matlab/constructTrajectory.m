@@ -17,7 +17,7 @@ function [traj,arrival_events] = constructTrajectory(network, params, solution, 
     % initial speed dimensions (1)
     % initial speed values (speed: -max_speed-max_speed)
 
-    % planned stops dimenstions (n, 3)
+    % planned stops dimenstions (n, 2)
     % planned stops values (edge 0-n, arrival_time_fraction_of_timesteps 0-1)
 
     % sim_events dimensions (edge_changes, 4)
