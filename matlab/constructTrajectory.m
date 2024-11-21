@@ -233,7 +233,7 @@ function speeds = constructMovement(params, solution, initial_speed)
     v_target_values = solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars);
     v_target_values = (2 * v_target_values(unique_idxs) - 1) * params.max_speed;
     
-    v_target = interp1(v_target_timesteps, v_target_values, 1:params.n_timesteps, 'previous');
+    v_target = interp1(v_target_timesteps, v_target_values, 1:params.n_timesteps, 'previous', 'extrap');
 
     speeds = zeros(1, params.n_timesteps);
     for i = 1:params.n_timesteps
