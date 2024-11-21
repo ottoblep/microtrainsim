@@ -108,26 +108,26 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
         if revisit_events
             % Reevaluate events from where position curve was modified
-                sim_events = sim_events(sim_events(:, 1) < start_braking_timestep, :);
-                if isempty(sim_events)
-                    sim_events(1,:) = [1 initial_position(1) initial_position(2) initial_position(3)];
-                    pivot_timestep = 1;
-                else
-                    pivot_timestep = sim_events(end, 1);
-                end
-                i_edge_change = size(sim_events, 1);
-            continue;
+            sim_events = sim_events(sim_events(:, 1) < start_braking_timestep, :);
+            if isempty(sim_events)
+                sim_events(1,:) = [1 initial_position(1) initial_position(2) initial_position(3)];
+                pivot_timestep = 1;
+            else
+                pivot_timestep = sim_events(end, 1);
             end
+            i_edge_change = size(sim_events, 1);
+            continue;
+        end
 
-            edge_entrance_point = (network.edge_cols(next_edge) == traversed_node);
-            sim_events(i_edge_change + 1, 1) = next_pivot_timestep;
-            sim_events(i_edge_change + 1, 2) = next_edge; % New Edge
-            sim_events(i_edge_change + 1, 3) = edge_entrance_point + (-1) * (edge_entrance_point*2 - 1) * abs(extra_movement / network.edge_values(next_edge)); % New Position on Edge
-            % new_train_orientation      =         edge_entrance_point      XOR node_traversal_direction    ( XNOR is multiplication )
-            sim_events(i_edge_change + 1, 4) = (-1) * (edge_entrance_point*2 - 1) * node_traversal_direction; % New Orientation on Edge
+        edge_entrance_point = (network.edge_cols(next_edge) == traversed_node);
+        sim_events(i_edge_change + 1, 1) = next_pivot_timestep;
+        sim_events(i_edge_change + 1, 2) = next_edge; % New Edge
+        sim_events(i_edge_change + 1, 3) = edge_entrance_point + (-1) * (edge_entrance_point*2 - 1) * abs(extra_movement / network.edge_values(next_edge)); % New Position on Edge
+        % new_train_orientation      =         edge_entrance_point      XOR node_traversal_direction    ( XNOR is multiplication )
+        sim_events(i_edge_change + 1, 4) = (-1) * (edge_entrance_point*2 - 1) * node_traversal_direction; % New Orientation on Edge
 
-            pivot_timestep = next_pivot_timestep;
-            i_edge_change = i_edge_change + 1;
+        pivot_timestep = next_pivot_timestep;
+        i_edge_change = i_edge_change + 1;
     end
 end
 
@@ -173,7 +173,7 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
     distance_covered_under_braking = n .* (abs(speeds(possible_braking_timesteps)) - 0.5 * (n+1) .* params.max_accel);
     position_error = distance_covered_under_braking - distance_from_stop;
     
-        subset_braking_idxs = find(position_error < 0);
+    subset_braking_idxs = find(position_error < 0);
 
     if isempty(subset_braking_idxs)
         warning("Failed to undershoot on braking.");
@@ -187,9 +187,9 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
         start_braking_timestep = first_approach_idx;
     end
     
-    v_target_timesteps = floor(solution(1:params.n_v_target_vars) * params.n_timesteps); 
+    v_target_timesteps = ceil(solution(1:params.n_v_target_vars) * params.n_timesteps); 
     v_target_values = (2 * solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars) - 1) * params.max_speed;
-    
+
     % Adjust target velocity points
 
     [v_target_timesteps, v_target_sorted_idxs] = sort(v_target_timesteps);
@@ -200,7 +200,7 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
     v_target_values(idxs_v_targets_during_stop) = 0;
 
     % Place speed target point of 0 at the start of braking 
-    idx_v_target_to_shift = find(v_target_timesteps > start_braking_timestep, 1, 'first');
+    idx_v_target_to_shift = find(v_target_timesteps >= start_braking_timestep, 1, 'first');
     v_target_timesteps(idx_v_target_to_shift) = start_braking_timestep;
     v_target_values(idx_v_target_to_shift) = 0;
 
@@ -217,19 +217,17 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
     scatter(start_braking_timestep, 400);
     scatter(v_target_timesteps, v_target_values);
     legend();
-end
+    end
 
 function speeds = constructMovement(params, solution, initial_speed)
     %% Constructs physically possible speed and position curves from target speeds points
-    % Round to discrete timestep
-    v_target_timesteps = floor(solution(1:params.n_v_target_vars) * params.n_timesteps);
-    v_target_timesteps(v_target_timesteps == 0) = 1;
+    v_target_timesteps = ceil(solution(1:params.n_v_target_vars) * params.n_timesteps);
 
     % Stretch to timestep 1
     [~, first_v_target_timestep_idx] = min(v_target_timesteps);
     v_target_timesteps(first_v_target_timestep_idx) = 1;
 
-    % Remove collisions
+    % Remove support point collisions
     [v_target_timesteps , unique_idxs, ~] = unique(v_target_timesteps);
 
     v_target_values = solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars);
@@ -238,13 +236,13 @@ function speeds = constructMovement(params, solution, initial_speed)
     v_target = interp1(v_target_timesteps, v_target_values, 1:params.n_timesteps, 'previous');
 
     speeds = zeros(1, params.n_timesteps);
-    for i = 2:params.n_timesteps
+    for i = 1:params.n_timesteps
         if i == 1
             diff = v_target(i) - initial_speed;
             speeds(i) = initial_speed + sign(diff) * min(abs(diff), params.max_accel);
         else
-        diff = v_target(i) - speeds(i-1);
-        speeds(i) = speeds(i-1) + sign(diff) * min(abs(diff), params.max_accel);
+            diff = v_target(i) - speeds(i-1);
+            speeds(i) = speeds(i-1) + sign(diff) * min(abs(diff), params.max_accel);
         end
     end
 
