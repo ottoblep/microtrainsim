@@ -207,16 +207,16 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
     solution(1:params.n_v_target_vars) = v_target_timesteps / params.n_timesteps;
     solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars) = 0.5 * (v_target_values / params.max_speed) + 0.5 ;
 
-    clf; hold on;
-    plot(position,'DisplayName',"position old");
-    plot(speeds,'DisplayName',"speeds old");
-    speeds_new = constructMovement(params, solution, initial_speed);
-    position_new = cumsum(speeds);
-    plot(position_new,'DisplayName',"position new");
-    plot(speeds_new,'DisplayName',"speeds new");
-    scatter(start_braking_timestep, 400);
-    scatter(v_target_timesteps, v_target_values);
-    legend();
+    % clf; hold on;
+    % plot(position,'DisplayName',"position old");
+    % plot(speeds,'DisplayName',"speeds old");
+    % speeds_new = constructMovement(params, solution, initial_speed);
+    % position_new = cumsum(speeds);
+    % plot(position_new,'DisplayName', "position new");
+    % plot(speeds_new,'DisplayName', "speeds new");
+    % scatter(start_braking_timestep, 400,'DisplayName', "start braking timestep");
+    % scatter(v_target_timesteps, v_target_values, 'DisplayName',"speed targets");
+    % legend();
     end
 
 function speeds = constructMovement(params, solution, initial_speed)
