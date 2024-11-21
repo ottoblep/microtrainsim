@@ -154,36 +154,8 @@ end
 function [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, initial_speed, initial_position)
     %% Modifies position curve to stop around a certain position defined by a timestep on the old position curve
 
-    approach_direction = sign(speeds(arrival_timestep));
-    % Only consider time since last direction change
-    first_approach_idx = find(sign(speeds(1:arrival_timestep-1)) == -approach_direction, 1, 'last') + 1;
-    if isempty(first_approach_idx)
-        first_approach_idx = 1;
-    end
-
-    % Select timestep to start braking (will purposefully undershoot due to discretization)
-    % Discrete Formula for distance covered under n full braking steps and one remainder braking step
-    possible_braking_timesteps = first_approach_idx:arrival_timestep;
-    distance_from_stop = abs(position(possible_braking_timesteps) - position(arrival_timestep));
-    n = floor(abs(speeds(possible_braking_timesteps)) / params.max_accel);
-    distance_covered_under_braking = n .* (abs(speeds(possible_braking_timesteps)) - 0.5 * (n+1) .* params.max_accel);
-    position_error = distance_covered_under_braking - distance_from_stop;
-    
-    subset_braking_idxs = find(position_error < 0);
-
-    if isempty(subset_braking_idxs)
-        warning("Failed to undershoot on braking.");
-        subset_braking_idxs = 1:numel(position_error);
-    end
-
-    [~, best_subset_braking_idx] = min(abs(position_error(subset_braking_idxs)));
-    start_braking_timestep = first_approach_idx - 1 + subset_braking_idxs(best_subset_braking_idx);
-
-    if isempty(start_braking_timestep)
-        start_braking_timestep = first_approach_idx;
-    end
-    
-   [v_target_timesteps, v_target_values] = extractSpeedTargetPoints(params, solution);
+    start_braking_timestep = findBrakingTimestep(position, speeds, arrival_timestep, params.max_accel);
+    [v_target_timesteps, v_target_values] = extractSpeedTargetPoints(params, solution);
 
     % Consider only points after start of braking
     v_target_relevant_idxs = find(v_target_timesteps >= start_braking_timestep);
@@ -232,6 +204,39 @@ function [position, speeds, start_braking_timestep] = addStop(params, position, 
     % scatter(start_braking_timestep, 400,'DisplayName', "start braking timestep");
     % scatter(v_target_timesteps, v_target_values, 'DisplayName',"new speed targets");
     % legend();
+end
+
+function start_braking_timestep = findBrakingTimestep(position, speeds, arrival_timestep, max_accel)
+    %% Calculate start of braking in order to stop at a position defined by a timestep on the position curve
+
+    approach_direction = sign(speeds(arrival_timestep));
+    % Only consider time since last direction change
+    first_approach_idx = find(sign(speeds(1:arrival_timestep-1)) == -approach_direction, 1, 'last') + 1;
+    if isempty(first_approach_idx)
+        first_approach_idx = 1;
+    end
+
+    % Select timestep to start braking (will purposefully undershoot due to discretization)
+    % Discrete Formula for distance covered under n full braking steps and one remainder braking step
+    possible_braking_timesteps = first_approach_idx:arrival_timestep;
+    distance_from_stop = abs(position(possible_braking_timesteps) - position(arrival_timestep));
+    n = floor(abs(speeds(possible_braking_timesteps)) / max_accel);
+    distance_covered_under_braking = n .* (abs(speeds(possible_braking_timesteps)) - 0.5 * (n+1) .* max_accel);
+    position_error = distance_covered_under_braking - distance_from_stop;
+    
+    subset_braking_idxs = find(position_error < 0);
+
+    if isempty(subset_braking_idxs)
+        warning("Failed to undershoot on braking.");
+        subset_braking_idxs = 1:numel(position_error);
+    end
+
+    [~, best_subset_braking_idx] = min(abs(position_error(subset_braking_idxs)));
+    start_braking_timestep = first_approach_idx - 1 + subset_braking_idxs(best_subset_braking_idx);
+
+    if isempty(start_braking_timestep)
+        start_braking_timestep = first_approach_idx;
+    end
 end
 
 function speeds = constructMovement(params, solution, initial_speed)
