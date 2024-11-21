@@ -84,9 +84,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
             % Modify curve so dead end is no longer hit
             assert(next_pivot_timestep < deadend_next_pivot_timestep);
-            [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position);
-            speeds = constructMovement(params, solution, initial_speed);
-            position = cumsum(speeds);
+            [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position);
             revisit_events = true;
         else
             % Decide next edge
@@ -99,9 +97,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
                 planned_stops(planned_stops(:,1) == sim_events(i_edge_change, 2), :) = 0; % Remove planned stop
                 departure_timestep = min(next_pivot_timestep + params.dwell_timesteps, params.n_timesteps);
 
-                [solution, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, initial_speed, initial_position);
-                speeds = constructMovement(params, solution, initial_speed);
-                position = cumsum(speeds);
+                [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, initial_speed, initial_position);
                 revisit_events = true;
             end
         end
@@ -155,8 +151,8 @@ function traj = assignTrajectory(network, params, position, sim_events, initial_
     end
 end
 
-function [solution, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, initial_speed, initial_position)
-    %% Modifies solution to stop around a certain position defined by a timestep on the old position curve
+function [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, initial_speed, initial_position)
+    %% Modifies position curve to stop around a certain position defined by a timestep on the old position curve
 
     approach_direction = sign(speeds(arrival_timestep));
     % Only consider time since last direction change
@@ -187,52 +183,61 @@ function [solution, start_braking_timestep] = addStop(params, position, speeds, 
         start_braking_timestep = first_approach_idx;
     end
     
-    v_target_timesteps = ceil(solution(1:params.n_v_target_vars) * params.n_timesteps); 
-    v_target_values = (2 * solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars) - 1) * params.max_speed;
+   [v_target_timesteps, v_target_values] = extractSpeedTargetPoints(params, solution);
 
-    % Adjust target velocity points
-
-    [v_target_timesteps, v_target_sorted_idxs] = sort(v_target_timesteps);
-    v_target_values = v_target_values(v_target_sorted_idxs);
+    % Consider only points after start of braking
+    v_target_relevant_idxs = find(v_target_timesteps >= start_braking_timestep);
+    v_target_values = v_target_values(v_target_relevant_idxs);
+    v_target_timesteps = v_target_timesteps(v_target_relevant_idxs);
 
     % Stay stationary during dwell time
     idxs_v_targets_during_stop = (v_target_timesteps >= start_braking_timestep) & (v_target_timesteps <= departure_time);
     v_target_values(idxs_v_targets_during_stop) = 0;
 
     % Place speed target point of 0 at the start of braking 
-    idx_v_target_to_shift = find(v_target_timesteps >= start_braking_timestep, 1, 'first');
-    v_target_timesteps(idx_v_target_to_shift) = start_braking_timestep;
-    v_target_values(idx_v_target_to_shift) = 0;
+    v_target_values(v_target_timesteps == start_braking_timestep) = [];
+    v_target_timesteps(v_target_timesteps == start_braking_timestep) = [];
+    v_target_timesteps(end+1) = start_braking_timestep;
+    v_target_values(end+1) = 0;
 
-    solution(1:params.n_v_target_vars) = v_target_timesteps / params.n_timesteps;
-    solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars) = 0.5 * (v_target_values / params.max_speed) + 0.5 ;
-
+    % Recalculate position curve
+    if numel(v_target_timesteps) == 1
+        v_target = ones(1, params.n_timesteps - start_braking_timestep + 1) * v_target_values(1);
+    else
+        v_target = interp1(v_target_timesteps, v_target_values, start_braking_timestep:params.n_timesteps, 'previous', 'extrap');
+    end
+    
     % clf; hold on;
     % plot(position,'DisplayName',"position old");
     % plot(speeds,'DisplayName',"speeds old");
-    % speeds_new = constructMovement(params, solution, initial_speed);
-    % position_new = cumsum(speeds);
-    % plot(position_new,'DisplayName', "position new");
-    % plot(speeds_new,'DisplayName', "speeds new");
-    % scatter(start_braking_timestep, 400,'DisplayName', "start braking timestep");
-    % scatter(v_target_timesteps, v_target_values, 'DisplayName',"speed targets");
-    % legend();
+
+    for i = start_braking_timestep:params.n_timesteps
+        if i == 1
+            diff = v_target(i - start_braking_timestep + 1) - initial_speed;
+            speeds(i) = initial_speed + sign(diff) * min(abs(diff), params.max_accel);
+        else
+            diff = v_target(i - start_braking_timestep + 1) - speeds(i-1);
+            speeds(i) = speeds(i-1) + sign(diff) * min(abs(diff), params.max_accel);
+        end
     end
+
+    if start_braking_timestep == 1
+        position(start_braking_timestep:params.n_timesteps) = cumsum(speeds(start_braking_timestep:params.n_timesteps));
+    else
+        position(start_braking_timestep:params.n_timesteps) = position(start_braking_timestep - 1) + cumsum(speeds(start_braking_timestep:params.n_timesteps));
+    end
+
+    % plot(position,'DisplayName', "position new");
+    % plot(speeds,'DisplayName', "speeds new");
+    % scatter(start_braking_timestep, 400,'DisplayName', "start braking timestep");
+    % scatter(v_target_timesteps, v_target_values, 'DisplayName',"new speed targets");
+    % legend();
+end
 
 function speeds = constructMovement(params, solution, initial_speed)
     %% Constructs physically possible speed and position curves from target speeds points
-    v_target_timesteps = ceil(solution(1:params.n_v_target_vars) * params.n_timesteps);
+    [v_target_timesteps, v_target_values] = extractSpeedTargetPoints(params, solution);
 
-    % Stretch to timestep 1
-    [~, first_v_target_timestep_idx] = min(v_target_timesteps);
-    v_target_timesteps(first_v_target_timestep_idx) = 1;
-
-    % Remove support point collisions
-    [v_target_timesteps , unique_idxs, ~] = unique(v_target_timesteps);
-
-    v_target_values = solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars);
-    v_target_values = (2 * v_target_values(unique_idxs) - 1) * params.max_speed;
-    
     v_target = interp1(v_target_timesteps, v_target_values, 1:params.n_timesteps, 'previous', 'extrap');
 
     speeds = zeros(1, params.n_timesteps);
@@ -250,4 +255,18 @@ function speeds = constructMovement(params, solution, initial_speed)
     % scatter(v_target_timesteps, v_target_values);
     % plot(v_target);
     % plot(speeds);
+end
+
+function [v_target_timesteps, v_target_values] = extractSpeedTargetPoints(params, solution)
+    %% Extract speed target points from normalized solution
+    v_target_timesteps = ceil(solution(1:params.n_v_target_vars) * params.n_timesteps);
+
+    % Stretch to first timestep
+    [~, first_v_target_timestep_idx] = min(v_target_timesteps);
+    v_target_timesteps(first_v_target_timestep_idx) = 1;
+
+    [v_target_timesteps , unique_idxs, ~] = unique(v_target_timesteps);
+
+    v_target_values = solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars);
+    v_target_values = (2 * v_target_values(unique_idxs) - 1) * params.max_speed;
 end
