@@ -1,4 +1,4 @@
-function [traj,arrival_events] = constructTrajectory(network, params, solution, initial_position, initial_speed, planned_stops)
+function [traj,arrival_events, n_fullfilled_stops] = constructTrajectory(network, params, solution, initial_position, initial_speed, planned_stops)
     %% Constructs a single train trajectory on the graph
 
     % Target velocity vars are a sparse representation of the target velocity curves.
@@ -26,14 +26,14 @@ function [traj,arrival_events] = constructTrajectory(network, params, solution, 
     % trajectory dimensions (3, timestep)
     % trajectory values (edge 0-n, position on edge 0-1, train orientation on edge -1, 1)
 
-    [sim_events, position] = assignEdgeTransitions(network, params, solution, initial_position, initial_speed, planned_stops);
+    [sim_events, position, n_fullfilled_stops] = assignEdgeTransitions(network, params, solution, initial_position, initial_speed, planned_stops);
 
     traj = assignTrajectory(network, params, position, sim_events, initial_position);
 
     arrival_events = sim_events(:, 1:2);
 end
 
-function [sim_events, position] = assignEdgeTransitions(network, params, solution, initial_position, initial_speed, planned_stops)
+function [sim_events, position, n_fullfilled_stops] = assignEdgeTransitions(network, params, solution, initial_position, initial_speed, planned_stops)
     %% This is the event-based part of the simulation
     % Also enforces stopping for scheduled edges and dead ends
 
@@ -44,6 +44,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
     sim_events(1,:) = [1 initial_position(1) initial_position(2) initial_position(3)];
 
     pivot_timestep = 1;
+    n_fullfilled_stops = 0;
     i_edge_change = 1;
     while pivot_timestep < params.n_timesteps
         % Determine position on edge
@@ -98,6 +99,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
                 departure_timestep = min(next_pivot_timestep + params.dwell_timesteps, params.n_timesteps);
 
                 [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, initial_speed, initial_position);
+                n_fullfilled_stops = n_fullfilled_stops + 1;
                 revisit_events = true;
             end
         end
@@ -227,7 +229,7 @@ function start_braking_timestep = findBrakingTimestep(position, speeds, arrival_
     subset_braking_idxs = find(position_error < 0);
 
     if isempty(subset_braking_idxs)
-        warning("Failed to undershoot on braking.");
+        %warning("Failed to undershoot on braking.");
         subset_braking_idxs = 1:numel(position_error);
     end
 
