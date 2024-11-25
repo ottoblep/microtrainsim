@@ -85,7 +85,7 @@ function [sim_events, position, n_fullfilled_stops] = assignEdgeTransitions(netw
 
             % Modify curve so dead end is no longer hit
             assert(next_pivot_timestep <= deadend_next_pivot_timestep);
-            [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position);
+            [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, initial_speed);
             revisit_events = true;
         else
             % Decide next edge
@@ -98,7 +98,7 @@ function [sim_events, position, n_fullfilled_stops] = assignEdgeTransitions(netw
                 planned_stops(planned_stops(:,2) == sim_events(i_edge_change, 2), :) = 0; % Remove planned stop
                 departure_timestep = min(next_pivot_timestep + params.dwell_timesteps, params.n_timesteps);
 
-                [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, initial_speed, initial_position);
+                [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, initial_speed);
                 n_fullfilled_stops = n_fullfilled_stops + 1;
                 revisit_events = true;
             end
@@ -153,7 +153,7 @@ function traj = assignTrajectory(network, params, position, sim_events, initial_
     end
 end
 
-function [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, initial_speed, initial_position)
+function [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, arrival_timestep, departure_time, initial_speed)
     %% Modifies position curve to stop around a certain position defined by a timestep on the old position curve
 
     start_braking_timestep = findBrakingTimestep(position, speeds, arrival_timestep, params.max_accel);
