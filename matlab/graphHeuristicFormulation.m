@@ -290,7 +290,7 @@ end
 
 function [solution, traj_set] = particleSwarmSearch(network, params)
     %% Run particle swarm optimization globally over collision and objective
-    nvars = params.n_trains * 2 * params.n_v_target_vars + params.n_switch_vars;
+    nvars = params.n_trains * (2 * params.n_v_target_vars + params.n_switch_vars);
     % GA uses a nvars^2 matrix for mutation costing a lot of memory
     % GA wants normalized parameters
     obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 2 * params.n_v_target_vars + params.n_switch_vars) + 0.5);
@@ -309,7 +309,7 @@ end
 
 function [solution, traj_set] = refineSolution(network, params, solution, traj_set)
     obj_fun = @(solution) -combinedObjective(network, params, reshape(solution, params.n_trains, 2 * params.n_v_target_vars + params.n_switch_vars));
-    nvars = params.n_trains * 2 * params.n_v_target_vars + params.n_switch_vars;
+    nvars = params.n_trains * (2 * params.n_v_target_vars + params.n_switch_vars);
     options = optimoptions('patternsearch', ...
         'Display','iter', ...
         'UseParallel', true, ...
