@@ -83,7 +83,7 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
             end
 
             % Modify curve so dead end is no longer hit
-            assert(next_pivot_timestep < deadend_next_pivot_timestep);
+            assert(next_pivot_timestep <= deadend_next_pivot_timestep);
             [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, initial_speed, initial_position);
             revisit_events = true;
         else
@@ -93,8 +93,8 @@ function [sim_events, position] = assignEdgeTransitions(network, params, solutio
 
             % Check if leaving a scheduled stop edge that has not yet been visited
             % Planned stop edges for one train must not be adjacent
-            if ismember(sim_events(i_edge_change, 2), planned_stops(:,1)) && ~ismember(next_edge, planned_stops(:,1))
-                planned_stops(planned_stops(:,1) == sim_events(i_edge_change, 2), :) = 0; % Remove planned stop
+            if ismember(sim_events(i_edge_change, 2), planned_stops(:,2)) && ~ismember(next_edge, planned_stops(:,2))
+                planned_stops(planned_stops(:,2) == sim_events(i_edge_change, 2), :) = 0; % Remove planned stop
                 departure_timestep = min(next_pivot_timestep + params.dwell_timesteps, params.n_timesteps);
 
                 [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, departure_timestep, initial_speed, initial_position);
