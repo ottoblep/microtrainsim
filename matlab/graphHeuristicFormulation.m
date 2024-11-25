@@ -132,7 +132,7 @@ function collision_score = collisionPenalties(network, traj_set, min_separation,
                     guaranteed_safe_time = int32(floor((distance - min_separation) / (2 * max_speed))) + 1;
                 else
                     % Exponential penalty for closeness beyond the minimum separation
-                    collision_score = collision_score - min(1e8, (min_separation/distance - 1));
+                    collision_score = collision_score - min(1e8, 100 * (min_separation/distance - 1));
                     guaranteed_safe_time = 1;
                 end
 
