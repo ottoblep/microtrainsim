@@ -11,6 +11,9 @@ function greedyHeuristicFormulation()
     [solution, traj_set] = refineSolution(network, params, solution, traj_set);
 
     final_collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed)
+    final_destination_score = destinationPenalties(network, traj_set, params.destinations)
+    [~, ~, final_n_fullfilled_stops] = constructTrajectorySet(network, params, solution)
+
     csvwrite("network.csv", network.adjacency_matrix);
     csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
     csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
