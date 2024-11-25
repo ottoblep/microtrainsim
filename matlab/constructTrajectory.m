@@ -187,11 +187,11 @@ function [position, speeds, start_braking_timestep] = addStop(params, position, 
 
     for i = start_braking_timestep:params.n_timesteps
         if i == 1
-            diff = v_target(i - start_braking_timestep + 1) - initial_speed;
-            speeds(i) = initial_speed + sign(diff) * min(abs(diff), params.max_accel);
+            disparity = v_target(i - start_braking_timestep + 1) - initial_speed;
+            speeds(i) = initial_speed + sign(disparity) * min(abs(disparity), params.max_accel);
         else
-            diff = v_target(i - start_braking_timestep + 1) - speeds(i-1);
-            speeds(i) = speeds(i-1) + sign(diff) * min(abs(diff), params.max_accel);
+            disparity = v_target(i - start_braking_timestep + 1) - speeds(i-1);
+            speeds(i) = speeds(i-1) + sign(disparity) * min(abs(disparity), params.max_accel);
         end
     end
 
@@ -250,11 +250,11 @@ function speeds = constructMovement(params, solution, initial_speed)
     speeds = zeros(1, params.n_timesteps);
     for i = 1:params.n_timesteps
         if i == 1
-            diff = v_target(i) - initial_speed;
-            speeds(i) = initial_speed + sign(diff) * min(abs(diff), params.max_accel);
+            disparity = v_target(i) - initial_speed;
+            speeds(i) = initial_speed + sign(disparity) * min(abs(disparity), params.max_accel);
         else
-            diff = v_target(i) - speeds(i-1);
-            speeds(i) = speeds(i-1) + sign(diff) * min(abs(diff), params.max_accel);
+            disparity = v_target(i) - speeds(i-1);
+            speeds(i) = speeds(i-1) + sign(disparity) * min(abs(disparity), params.max_accel);
         end
     end
 
