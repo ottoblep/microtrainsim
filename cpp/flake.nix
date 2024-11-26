@@ -15,9 +15,10 @@
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             # C++ Compiler is already part of stdenv
+            cmake
+	          lldb
             boost
             catch2
-            cmake
           ];
         };
       };
