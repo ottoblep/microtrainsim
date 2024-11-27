@@ -41,15 +41,6 @@
             ]))
           ];
         };
-
-        cpp = pkgs.mkShell {
-            packages = with pkgs; [
-              # C++ Compiler is already part of stdenv
-              boost
-              catch2
-              cmake
-            ];
-          };
       };
     };
 }

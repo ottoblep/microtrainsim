@@ -21,8 +21,8 @@ end
 
 function [network, params] = generateEnvironment(network_template)
     %% Network
-    network.adjacency_matrix = readmatrix(strcat("../network_templates/", network_template, ".csv"));
-    network.station_edges = readmatrix(strcat("../network_templates/", network_template, "_stations.csv"));
+    network.adjacency_matrix = readmatrix(strcat("./network_templates/", network_template, ".csv"));
+    network.station_edges = readmatrix(strcat("./network_templates/", network_template, "_stations.csv"));
     [network.edge_rows, network.edge_cols, network.edge_values] = find(network.adjacency_matrix);
     network.adjacent_edge_list = {};
     for node = 1:size(network.adjacency_matrix,1)
@@ -45,12 +45,12 @@ function [network, params] = generateEnvironment(network_template)
     params.n_switch_vars = params.max_speed * params.n_timesteps / min(tmp_adj, [], 'all'); % Bounded by max possible edge changes
 
     %% Train Parameters
-    params.initial_positions = readmatrix(strcat("../network_templates/", network_template, "_initial_positions.csv"));
+    params.initial_positions = readmatrix(strcat("./network_templates/", network_template, "_initial_positions.csv"));
     params.n_trains = size(params.initial_positions, 1);
     params.initial_speeds = zeros(params.n_trains, 1);
 
-    params.destinations = readmatrix(strcat("../network_templates/", network_template, "_destinations.csv"));
-    params.planned_stops = readmatrix(strcat("../network_templates/", network_template, "_planned_stops.csv"));
+    params.destinations = readmatrix(strcat("./network_templates/", network_template, "_destinations.csv"));
+    params.planned_stops = readmatrix(strcat("./network_templates/", network_template, "_planned_stops.csv"));
 end
 
 %% Solution Construction
