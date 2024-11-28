@@ -85,7 +85,7 @@ function [sim_events, position, n_fullfilled_stops] = assignEdgeTransitions(netw
 
             % Modify curve so dead end is no longer hit
             assert(next_pivot_timestep <= deadend_next_pivot_timestep);
-            [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep, deadend_next_pivot_timestep, initial_speed);
+            [position, speeds, start_braking_timestep] = addStop(params, position, speeds, solution, next_pivot_timestep - 1, deadend_next_pivot_timestep, initial_speed);
             revisit_events = true;
         else
             % Decide next edge
