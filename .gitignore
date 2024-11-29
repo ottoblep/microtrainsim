@@ -4,3 +4,4 @@
 *.jpg
 *.pdf
 *.md
+!network_templates/*

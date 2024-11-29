@@ -27,10 +27,12 @@ function [network, params] = generateEnvironment(network_template)
     for node = 1:size(network.adjacency_matrix,1)
         network.adjacent_edge_list{node} = find((network.edge_rows == node) | (network.edge_cols == node));
     end
+    network.speed_limits = readmatrix(strcat("./network_templates/", network_template, "_speed_limits.csv"));
     % All shortest path pairs
     tmp_adj = network.adjacency_matrix;
     tmp_adj(tmp_adj==0) = Inf;
     network.all_shortest_paths = distances(graph(tmp_adj,'upper'), 'Method', 'positive');
+        
 
     %% Simulation Parameters
     params.n_timesteps = 200; % 10s timesteps
