@@ -22,7 +22,6 @@ end
 function [network, params] = generateEnvironment(network_template)
     %% Network
     network.adjacency_matrix = readmatrix(strcat("./network_templates/", network_template, ".csv"));
-    network.station_edges = readmatrix(strcat("./network_templates/", network_template, "_stations.csv"));
     [network.edge_rows, network.edge_cols, network.edge_values] = find(network.adjacency_matrix);
     network.adjacent_edge_list = {};
     for node = 1:size(network.adjacency_matrix,1)
