@@ -52,20 +52,20 @@ function [traj, events, n_fullfilled_stops] = constructTrajectory(network, param
         v_targets_working_set = min(v_targets(2), network.speed_limits(events(end, 2));
 
         % Find next edge exit
-        edge_transition = identifyNextEdgeExit(network, current_edge_state, v_targets_working_set, start_timestep, max_accel);
+        edge_transition = identifyNextEdgeExit(network, events(end,:), v_targets_working_set, start_timestep, max_accel);
         if isempty(edge_transition)
             % TODO
         end
 
         viable_next_edges = network.adjacent_edge_list{traversed_node};
-        viable_next_edges = viable_next_edges(viable_next_edges~=current_edge_state(1));
+        viable_next_edges = viable_next_edges(viable_next_edges~=initial_edge_state(1));
 
         revisit_events = true;
 
         % Check for dead end
         if isemtpy(viable_next_edges)
             % Stop train until speed target is in the other direction
-            departure_timestep = edge_transition.timestep - 1 + find(sign(speeds(edge_transition.timestep:params.n_timesteps)) ~= node_traversal_direction, 1, 'first');
+            departure_timestep = edge_transition.timestep - 1 + find(sign(speeds_edge(edge_transition.timestep:params.n_timesteps)) ~= node_traversal_direction, 1, 'first');
             % TODO: adjust speed targets
         else
             % Decide next edge
@@ -73,12 +73,12 @@ function [traj, events, n_fullfilled_stops] = constructTrajectory(network, param
             next_edge = viable_next_edges(next_edge_selection);
 
             % Check for scheduled stop
-            if ismember(current_edge_state(1), planned_stops(:,2)) && ~ismember(next_edge, planned_stops(:,2))
-                if ismember(current_edge_state(1), planned_stops(:,2)) && ismember(next_edge, planned_stops(:,2))
+            if ismember(initial_edge_state(1), planned_stops(:,2)) && ~ismember(next_edge, planned_stops(:,2))
+                if ismember(initial_edge_state(1), planned_stops(:,2)) && ismember(next_edge, planned_stops(:,2))
                     error("Planned stops must not be on adjacent edges.")
                 end
 
-                planned_stops(planned_stops(:,2) == current_edge_state(1), :) = 0; % Remove the stop
+                planned_stops(planned_stops(:,2) == initial_edge_state(1), :) = 0; % Remove the stop
                 departure_timestep = min(edge_transition.timestep + params.dwell_timesteps, params.n_timesteps);
                 % TODO: adjust speed targets
             % Check for overspeed on entering new edge
@@ -113,43 +113,4 @@ function [traj, events, n_fullfilled_stops] = constructTrajectory(network, param
         % Write trajectory for this edge
         % TODO
     end
-end
-
-function edge_transition = identifyNextEdgeExit(network, current_edge_state, v_targets, start_timestep, max_accel) 
-        % Measure current edge
-        current_edge_length = network.edge_values(current_edge_state(1));
-        remaining_backward_length = current_edge_state(2) * current_edge_length;
-        remaining_forward_length = current_edge_length - remaining_backward_length;
-
-        % Construct preliminary trajectory on edge
-        speeds = constructMovement(v_targets, start_timestep, params.n_timesteps, current_edge_state(4), params.max_accel);
-        edge_trajectory = current_edge_state(3) * cumsum(speeds);
-
-        % Find next edge exit 
-        new_edge_timestep = find((edge_trajectory > remaining_forward_length | edge_trajectory < -remaining_backward_length), 1);
-        edge_exit_point = any((edge_trajectory(new_edge_timestep - (pivot_timestep - 1)) > remaining_forward_length));
-
-        % If no other transition exists the simulation is finished
-        if isempty(new_edge_timestep)
-            edge_transition = [];
-            return;
-        end
-
-        % Determine transition properties 
-        % node_traversal_direction = edge_exit_point XNOR old_train_orientation
-        if edge_exit_point % exit forwards
-            traversed_node = network.edge_cols(current_edge_state(1));
-            node_traversal_direction = current_edge_state(3);
-            extra_movement = edge_trajectory(new_edge_timestep) - remaining_forward_length;
-        else
-            traversed_node = network.edge_rows(current_edge_state(1));
-            node_traversal_direction = -current_edge_state(3);
-            extra_movement = edge_trajectory(new_edge_timestep) + remaining_backward_length;
-        end
-
-        edge_transition.timestep = new_edge_timestep;
-        edge_transition.traversed_node = traversed_node;
-        edge_transition.node_traversal_direction = node_traversal_direction;
-        edge_transition.extra_movement = extra_movement;
-        edge_transition.speed = speeds(new_edge_timestep);
 end
