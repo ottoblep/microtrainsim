@@ -37,12 +37,13 @@ function [traj, events, n_fullfilled_stops] = constructTrajectory(network, param
     v_target_values = (2 * v_target_values(unique_idxs) - 1) * params.max_speed;
     v_targets = [v_target_timesteps v_target_values];
 
-    % We move from edge-change event to edge-change event (train state at first timestep on new edge)
+    % We move from edge to edge (events are train state at first timestep on new edge)
     % p(n) - p(n-1) = v(n-1)
     % v(n) - v(n-1) = a(n-1)
 
     events(1) = [1, initial_position(1), initial_position(2), initial_position(3), initial_speed];
     traj(1,:) = events(1, 2:5); 
+
     while True 
         if (events(end, 5) > network.speed_limits(traj(pivot_timestep, 1) || events(end, 5) > params.max_speed)
             error("Speed limit could not be satisfied.");
@@ -52,9 +53,15 @@ function [traj, events, n_fullfilled_stops] = constructTrajectory(network, param
         v_targets_working_set = min(v_targets(2), network.speed_limits(events(end, 2));
 
         % Find next edge exit
-        edge_transition = identifyNextEdgeExit(network, events(end,:), v_targets_working_set, start_timestep, max_accel);
+        [edge_transition edge_trajectory] = simulateEdge(network, params, events(end, :), v_targets_working_set);
+
         if isempty(edge_transition)
-            % TODO
+            % Finish simulation
+            traj(events(end,1):params.n_timesteps, 1) = events(end, 2);
+            traj(events(end,1):params.n_timesteps, 2) = edge_trajectory;
+            traj(events(end,1):params.n_timesteps, 3) = events(end, 4);
+            traj(events(end,1):params.n_timesteps, 4) = events(end, 5);
+            break;
         end
 
         viable_next_edges = network.adjacent_edge_list{traversed_node};
@@ -82,7 +89,7 @@ function [traj, events, n_fullfilled_stops] = constructTrajectory(network, param
                 departure_timestep = min(edge_transition.timestep + params.dwell_timesteps, params.n_timesteps);
                 % TODO: adjust speed targets
             % Check for overspeed on entering new edge
-            else if edge_transition.speed > network.speed_limits(next_edge)
+            elseif edge_transition.speed > network.speed_limits(next_edge)
                 % TODO: adjust speed targets
             else 
                 revisit_events = false;
@@ -98,19 +105,22 @@ function [traj, events, n_fullfilled_stops] = constructTrajectory(network, param
             continue;
         end
 
-        % Write initial state for next edge
-        edge_entrance_point = (network.edge_cols(next_edge) == traversed_node);
-        events(end + 1, 1) = edge_transition.timestep;
-        events(end + 1, 2) = next_edge; % New Edge
-        events(end + 1, 3) = edge_entrance_point + (-1) * (edge_entrance_point*2 - 1) * abs(edge_transition.extra_movement / network.edge_values(next_edge)); % New Position on Edge
-        % new_train_orientation      =         edge_entrance_point      XOR node_traversal_direction    ( XNOR is multiplication )
-        events(end + 1, 4) = (-1) * (edge_entrance_point*2 - 1) * edge_transition.node_traversal_direction; % New Orientation on Edge
-        events(end + 1, 5) = edge_transition.speed;
+        % Write trajectory for this edge
+        traj(events(end,1):edge_transition.timestep - 1, 1) = events(end, 2);
+        traj(events(end,1):edge_transition.timestep - 1, 2) = edge_trajectory;
+        traj(events(end,1):edge_transition.timestep - 1, 3) = events(end, 4);
+        traj(events(end,1):edge_transition.timestep - 1, 4) = events(end, 5);
 
         % Write adjusted v_targets for this edge
         % TODO
 
-        % Write trajectory for this edge
-        % TODO
+        % Write initial state for next edge
+        edge_entrance_point = (network.edge_cols(next_edge) == edge_transition.traversed_node);
+        events(end + 1, 1) = edge_transition.timestep;
+        events(end + 1, 2) = next_edge; % New Edge
+        events(end + 1, 3) = edge_entrance_point + (-1) * (edge_entrance_point*2 - 1) * abs(edge_transition.extra_movement / network.edge_values(next_edge)); % New Position on Edge
+        % new_train_orientation      =         edge_entrance_point      XOR node_traversal_direction    ( XNOR is multiplication )
+        events(end + 1, 4) = (-1) * (edge_entrance_point * 2 - 1) * edge_transition.node_traversal_direction; % New Orientation on Edge
+        events(end + 1, 5) = edge_transition.speed;
     end
 end
