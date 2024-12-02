@@ -1,4 +1,4 @@
-function [edge_transition edge_trajectory] = simulateEdge(network, params, initial_edge_state, v_targets) 
+function [edge_transition edge_trajectory edge_speeds] = simulateEdge(network, params, initial_edge_state, v_targets) 
         %% Continuous simulation of movement on one edge
         % Does not check any constraints
 
@@ -10,13 +10,14 @@ function [edge_transition edge_trajectory] = simulateEdge(network, params, initi
         % Data starts at the initial edge state
         v_targets_cont_edge = interp1(v_targets(:,1), v_targets(:,2), initial_edge_state(1):params.n_timesteps, 'previous', 'extrap');
 
+        edge_length = network.edge_values(initial_edge_state(2));
+        edge_length_divisor = 1 / edge_length;
+
         edge_speeds = zeros(1, params.n_timesteps - initial_edge_state(1) + 1);
         edge_trajectory = zeros(1, params.n_timesteps - initial_edge_state(1) + 1);
         edge_trajectory(1) = initial_edge_state(3);
-        edge_length = network.edge_values(initial_edge_state(2));
-        edge_length_divisor = 1 / edge_length;
-;
         edge_speeds(1) = initial_edge_state(5);
+
         edge_transition = [];
         for i = 2:params.n_timesteps
             speed_disparity = v_targets_cont_edge(i-1) - edge_speeds(i-1);

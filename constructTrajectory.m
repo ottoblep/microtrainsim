@@ -1,4 +1,4 @@
-function [traj, events, n_fullfilled_stops] = constructTrajectory(network, params, solution, initial_position, initial_speed, planned_stops)
+function [traj, events] = constructTrajectory(network, params, solution, initial_position, initial_speed, planned_stops)
     %% Constructs a single train trajectory on the graph
     % Also iteratively enforces scheduled edges, dead ends and speed limits by adjusting speed targets
     % Simulation is based on edge change events then trajectory is filled with continuous positions
@@ -35,68 +35,82 @@ function [traj, events, n_fullfilled_stops] = constructTrajectory(network, param
     [v_target_timesteps , unique_idxs, ~] = unique(v_target_timesteps);
     v_target_values = solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars);
     v_target_values = (2 * v_target_values(unique_idxs) - 1) * params.max_speed;
-    v_targets = [v_target_timesteps v_target_values];
+    v_targets = [v_target_timesteps' v_target_values'];
 
-    % We move from edge to edge (events are train state at first timestep on new edge)
+    % Events is the first train state for each new edge
+    % Trajectory is the train state at each timestep
+
     % p(n) - p(n-1) = v(n-1)
     % v(n) - v(n-1) = a(n-1)
 
-    events(1) = [1, initial_position(1), initial_position(2), initial_position(3), initial_speed];
+    events(1,:) = [1, initial_position(1), initial_position(2), initial_position(3), initial_speed];
     traj(1,:) = events(1, 2:5); 
 
-    while True 
-        if (events(end, 5) > network.speed_limits(traj(pivot_timestep, 1) || events(end, 5) > params.max_speed)
+    while true 
+        if (events(end, 5) > network.speed_limits(traj(events(end,1), 1)) || events(end, 5) > params.max_speed)
             error("Speed limit could not be satisfied.");
         end
 
         % Adjust copy of speed targets for current edge speed limit
-        v_targets_working_set = min(v_targets(2), network.speed_limits(events(end, 2));
+        % Since braking can only shift edge traversal backwards and when jumping back in time all reevaluated edges are inside the braking curve 
+        % this will not lead to problems with recursive addBraking
+        v_targets_working_set = v_targets;
+        edge_target_idxs = find(v_targets(:,1) >= events(end,1));
+        v_targets_working_set(edge_target_idxs, 2) = min(v_targets(edge_target_idxs, 2), network.speed_limits(events(end, 2)));
 
         % Find next edge exit
-        [edge_transition edge_trajectory] = simulateEdge(network, params, events(end, :), v_targets_working_set);
+        [edge_transition edge_trajectory edge_speeds] = simulateEdge(network, params, events(end, :), v_targets_working_set);
 
         if isempty(edge_transition)
             % Finish simulation
             traj(events(end,1):params.n_timesteps, 1) = events(end, 2);
             traj(events(end,1):params.n_timesteps, 2) = edge_trajectory;
             traj(events(end,1):params.n_timesteps, 3) = events(end, 4);
-            traj(events(end,1):params.n_timesteps, 4) = events(end, 5);
+            traj(events(end,1):params.n_timesteps, 4) = edge_speeds;
             break;
         end
 
-        viable_next_edges = network.adjacent_edge_list{traversed_node};
-        viable_next_edges = viable_next_edges(viable_next_edges~=initial_edge_state(1));
+        viable_next_edges = network.adjacent_edge_list{edge_transition.traversed_node};
+        viable_next_edges = viable_next_edges(viable_next_edges~=events(end,1));
 
-        revisit_events = true;
+        % Further modify speed targets in case of constraint violations
+
+        v_targets_modified = true;
+        global_speeds = [traj(1:(events(end,1) - 1), 4), edge_speeds, edge_transition.speed];
 
         % Check for dead end
-        if isemtpy(viable_next_edges)
+        if isempty(viable_next_edges)
             % Stop train until speed target is in the other direction
-            departure_timestep = edge_transition.timestep - 1 + find(sign(speeds_edge(edge_transition.timestep:params.n_timesteps)) ~= node_traversal_direction, 1, 'first');
-            % TODO: adjust speed targets
+            reverse_speed_target_idxs = (v_targets_working_set(:,1) >= edge_transition.timestep & sign(v_targets_working_set(:, 2)) ~= sign(edge_speeds(end)));
+            departure_timestep = min(v_targets_working_set(reverse_speed_target_idxs, 1));
+            v_targets_working_set = addBraking(params, global_speeds, v_targets_working_set, edge_transition.timestep, false, departure_timestep, 0);
         else
             % Decide next edge
-            next_edge_selection = 1 + round(switch_directions(i_edge_change) * (length(viable_next_edges) - 1));
+            next_edge_selection = 1 + round(switch_directions(size(events, 1)) * (length(viable_next_edges) - 1));
             next_edge = viable_next_edges(next_edge_selection);
 
             % Check for scheduled stop
-            if ismember(initial_edge_state(1), planned_stops(:,2)) && ~ismember(next_edge, planned_stops(:,2))
-                if ismember(initial_edge_state(1), planned_stops(:,2)) && ismember(next_edge, planned_stops(:,2))
+            if ismember(events(end,2), planned_stops(:,2)) && ~ismember(next_edge, planned_stops(:,2))
+                if ismember(events(end,2), planned_stops(:,2)) && ismember(next_edge, planned_stops(:,2))
                     error("Planned stops must not be on adjacent edges.")
                 end
 
-                planned_stops(planned_stops(:,2) == initial_edge_state(1), :) = 0; % Remove the stop
+                planned_stops(planned_stops(:,2) == events(end,2), :) = 0; % Remove the stop
                 departure_timestep = min(edge_transition.timestep + params.dwell_timesteps, params.n_timesteps);
-                % TODO: adjust speed targets
+                v_targets_working_set = addBraking(params, global_speeds, v_targets_working_set, edge_transition.timestep, false, departure_timestep, 0);
             % Check for overspeed on entering new edge
-            elseif edge_transition.speed > network.speed_limits(next_edge)
-                % TODO: adjust speed targets
+            elseif abs(edge_transition.speed) > network.speed_limits(next_edge)
+                v_targets_working_set = addBraking(params, global_speeds, v_targets_working_set, edge_transition.timestep, true, [], sign(edge_transition.speed) * network.speed_limits(next_edge));
             else 
-                revisit_events = false;
+                v_targets_modified = false;
             end
         end
 
-        if revisit_events
+        if v_targets_modified
+            % Write new v targets for edge
+            v_target_idxs_this_edge = find((v_targets(:,1) >= events(end, 1) && v_targets(:,1) < edge_transition.timestep));
+            v_targets(v_target_idxs_this_edge) = v_targets_working_set(v_target_idxs_this_edge);
+
             % Jump back to before earliest modified speed target point
             events = events(events(:, 1) < start_braking_timestep, :);
             if isempty(sim_events)
@@ -105,14 +119,13 @@ function [traj, events, n_fullfilled_stops] = constructTrajectory(network, param
             continue;
         end
 
+        % If the transition needs no further modification finalize it
+
         % Write trajectory for this edge
         traj(events(end,1):edge_transition.timestep - 1, 1) = events(end, 2);
         traj(events(end,1):edge_transition.timestep - 1, 2) = edge_trajectory;
         traj(events(end,1):edge_transition.timestep - 1, 3) = events(end, 4);
-        traj(events(end,1):edge_transition.timestep - 1, 4) = events(end, 5);
-
-        % Write adjusted v_targets for this edge
-        % TODO
+        traj(events(end,1):edge_transition.timestep - 1, 4) = edge_speeds;
 
         % Write initial state for next edge
         edge_entrance_point = (network.edge_cols(next_edge) == edge_transition.traversed_node);
