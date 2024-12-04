@@ -1,4 +1,4 @@
-function v_targets = addBraking(params, global_speeds, v_targets, previous_arrival_timestep, immediate_departure, hold_until_timestep, braking_goal_speed)
+function [v_targets start_braking_timestep] = addBraking(params, global_speeds, v_targets, previous_arrival_timestep, immediate_departure, hold_until_timestep, braking_goal_speed)
     %% Modifies v targets so that train will reach a certain velocity before reaching a position specified by timestep on the old position curve
     v_target_timesteps = v_targets(:, 1);
     v_target_values = v_targets(:, 2);
@@ -23,8 +23,7 @@ function v_targets = addBraking(params, global_speeds, v_targets, previous_arriv
     v_target_timesteps(end+1) = start_braking_timestep;
     v_target_values(end+1) = braking_goal_speed;
 
-    v_targets(:, 1) = v_target_timesteps;
-    v_targets(:, 2) = v_target_values;
+    v_targets = [v_target_timesteps v_target_values];
 end
 
 function start_braking_timestep = findBrakingTimestep(params, global_speeds, previous_arrival_timestep, braking_goal_speed)
@@ -33,7 +32,7 @@ function start_braking_timestep = findBrakingTimestep(params, global_speeds, pre
     % global_speeds speeds from start of simulation until previous_arrival_timestep
     assert(numel(global_speeds) == previous_arrival_timestep);
 
-    global_trajectory = zeros(1:previous_arrival_timestep);
+    global_trajectory = zeros(1,previous_arrival_timestep);
     global_trajectory(2:previous_arrival_timestep) = cumsum(global_speeds(1:previous_arrival_timestep - 1));
 
     approach_direction = sign(global_speeds(end));
@@ -49,9 +48,9 @@ function start_braking_timestep = findBrakingTimestep(params, global_speeds, pre
     abs_v_diff = abs(global_speeds(candidate_timesteps) - braking_goal_speed);
     required_braking_time = ceil(abs_v_diff / params.max_accel);
     distance_covered_while_braking = required_braking_time * braking_goal_speed + (0.5 * (required_braking_time - 1) * params.max_accel) + rem(abs_v_diff, params.max_accel);
-    position_error = abs(global_trajectory(candidate_timesteps) - target_position) - distance_covered_while_braking;
+    position_error = abs(global_trajectory(candidate_timesteps) - target_position) - distance_covered_while_braking';
     
-    subset_braking_idxs = find(position_error < 0);
+    subset_braking_idxs = find(position_error <= 0);
 
     if isempty(subset_braking_idxs)
         warning("Failed to undershoot on braking.");
@@ -59,7 +58,7 @@ function start_braking_timestep = findBrakingTimestep(params, global_speeds, pre
     end
 
     [~, best_subset_braking_idx] = min(abs(position_error(subset_braking_idxs)));
-    start_braking_timestep = first_approach_idx - 1 + subset_braking_idxs(best_subset_braking_idx);
+    start_braking_timestep = first_approach_idx - 1 + candidate_timesteps(subset_braking_idxs(best_subset_braking_idx));
 
     if isempty(start_braking_timestep)
         warning("Failed to find braking timestep.");

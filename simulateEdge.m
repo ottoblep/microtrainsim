@@ -7,19 +7,22 @@ function [edge_transition edge_trajectory edge_speeds] = simulateEdge(network, p
         % v_target dimensions (n, 2)
         % v_target values (timestep [0,n], speed [-Inf,Inf])
 
-        % Data starts at the initial edge state
+        assert(isequal(unique(v_targets(:,1)), v_targets(:,1)));
+
+        % Data from here on starts at the initial edge state
         v_targets_cont_edge = interp1(v_targets(:,1), v_targets(:,2), initial_edge_state(1):params.n_timesteps, 'previous', 'extrap');
 
         edge_length = network.edge_values(initial_edge_state(2));
         edge_length_divisor = 1 / edge_length;
 
+        % In the worst case we stay on edge until params.n_timesteps so params.n_timesteps - initial_edge_state(1) + 1 steps
         edge_speeds = zeros(1, params.n_timesteps - initial_edge_state(1) + 1);
         edge_trajectory = zeros(1, params.n_timesteps - initial_edge_state(1) + 1);
         edge_trajectory(1) = initial_edge_state(3);
         edge_speeds(1) = initial_edge_state(5);
 
         edge_transition = [];
-        for i = 2:params.n_timesteps
+        for i = 2:params.n_timesteps - initial_edge_state(1) + 1
             speed_disparity = v_targets_cont_edge(i-1) - edge_speeds(i-1);
             edge_speeds(i) = edge_speeds(i-1) + sign(speed_disparity) * min(abs(speed_disparity), params.max_accel);
             edge_trajectory(i) = edge_trajectory(i-1) + (initial_edge_state(4) * edge_speeds(i-1) * edge_length_divisor);
