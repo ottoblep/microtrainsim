@@ -28,7 +28,7 @@ end
 
 function start_braking_timestep = findBrakingTimestep(params, global_speeds, edge_transition, braking_goal_speed)
     %% Find start_braking_timestep that undershoots the position at edge_transition.timestep the littlest while braking with max_accel starting at start_braking_timestep
-
+    
     % global_speeds speeds from start of simulation until edge_transition.timestep
     assert(numel(global_speeds) == edge_transition.timestep);
 
@@ -54,15 +54,15 @@ function start_braking_timestep = findBrakingTimestep(params, global_speeds, edg
     subset_braking_idxs = find(dist_remaining_after_braking > 0);
 
     if isempty(subset_braking_idxs)
-        warning("Failed to undershoot on braking.");
-        subset_braking_idxs = 1:numel(dist_remaining_after_braking);
+        error("Failed to undershoot on braking.");
+        % subset_braking_idxs = 1:numel(dist_remaining_after_braking);
     end
 
     [~, best_subset_braking_idx] = min(abs(dist_remaining_after_braking(subset_braking_idxs)));
     start_braking_timestep = first_approach_idx - 1 + candidate_timesteps(subset_braking_idxs(best_subset_braking_idx));
 
-    if isempty(start_braking_timestep)
-        warning("Failed to find braking timestep.");
-        start_braking_timestep = first_approach_idx;
+    if (isempty(start_braking_timestep) || start_braking_timestep > edge_transition.timestep || start_braking_timestep < 1)
+        error("Failed to find braking timestep.");
+        % start_braking_timestep = first_approach_idx;
     end
 end
