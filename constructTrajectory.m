@@ -55,8 +55,10 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
         end
 
         % Adjust copy of speed targets for current edge speed limit
-        % Since braking can only shift edge traversal backwards and when jumping back in time all reevaluated edges are inside the braking curve 
-        % this will not lead to problems with recursive addBraking
+        % Assumptions:
+        %   - Braking can only shift edge traversals backwards
+        %   - When jumping back multiple transitions these are inside the braking curve (fixed speed target)
+        %   - Adding more braking in this way can never exceed a previous speed limit
         v_targets_working_set = v_targets;
         edge_target_idxs = find(v_targets(:,1) >= events(end,1));
         v_targets_working_set(edge_target_idxs, 2) = min(v_targets(edge_target_idxs, 2), network.speed_limits(events(end, 2)));
