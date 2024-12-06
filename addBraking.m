@@ -47,17 +47,18 @@ function start_braking_timestep = findBrakingTimestep(params, global_speeds, pre
     target_position = global_trajectory(previous_arrival_timestep);
     abs_v_diff = abs(global_speeds(candidate_timesteps) - braking_goal_speed);
     required_braking_time = ceil(abs_v_diff / params.max_accel);
-    distance_covered_while_braking = required_braking_time * braking_goal_speed + (0.5 * (required_braking_time - 1) * params.max_accel) + rem(abs_v_diff, params.max_accel);
-    position_error = abs(global_trajectory(candidate_timesteps) - target_position) - distance_covered_while_braking';
+    dist_covered_while_braking = required_braking_time * braking_goal_speed + (0.5 * (required_braking_time - 1) * params.max_accel) + rem(abs_v_diff, params.max_accel);
+    dist_remaining_after_braking = abs(global_trajectory(candidate_timesteps) - target_position) - dist_covered_while_braking';
     
-    subset_braking_idxs = find(position_error <= 0);
+    % Undershoot as little as possible
+    subset_braking_idxs = find(dist_remaining_after_braking > 0);
 
     if isempty(subset_braking_idxs)
         warning("Failed to undershoot on braking.");
-        subset_braking_idxs = 1:numel(position_error);
+        subset_braking_idxs = 1:numel(dist_remaining_after_braking);
     end
 
-    [~, best_subset_braking_idx] = min(abs(position_error(subset_braking_idxs)));
+    [~, best_subset_braking_idx] = min(abs(dist_remaining_after_braking(subset_braking_idxs)));
     start_braking_timestep = first_approach_idx - 1 + candidate_timesteps(subset_braking_idxs(best_subset_braking_idx));
 
     if isempty(start_braking_timestep)
