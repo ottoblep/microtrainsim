@@ -113,8 +113,8 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
 
         if v_targets_modified
             assert(size(v_targets, 2) == size(v_targets_working_set, 2));
-            % Write new v targets for edge
-            findVTargetIdxsOnEdge = @(x) find(x(:,1) >= events(end, 1) & x(:,1) < edge_transition.timestep);
+            % Write new v targets for braking curve
+            findVTargetIdxsOnEdge = @(x) find(x(:,1) >= start_braking_timestep & x(:,1) < edge_transition.timestep);
 
             v_targets(findVTargetIdxsOnEdge(v_targets), :) = [];
             v_targets = cat(1, v_targets, v_targets_working_set(findVTargetIdxsOnEdge(v_targets_working_set), :));
