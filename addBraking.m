@@ -59,7 +59,7 @@ function start_braking_timestep = findBrakingTimestep(params, global_speeds, edg
     end
 
     [~, best_subset_braking_idx] = min(abs(dist_remaining_after_braking(subset_braking_idxs)));
-    start_braking_timestep = first_approach_idx - 1 + candidate_timesteps(subset_braking_idxs(best_subset_braking_idx));
+    start_braking_timestep = first_approach_idx + candidate_timesteps(subset_braking_idxs(best_subset_braking_idx));
 
     if (isempty(start_braking_timestep) || start_braking_timestep > edge_transition.timestep || start_braking_timestep < 1)
         error("Failed to find braking timestep.");
