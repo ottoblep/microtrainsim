@@ -88,7 +88,7 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
             % Stop train until speed target is in the other direction
             reverse_speed_target_idxs = (v_targets_working_set(:,1) >= edge_transition.timestep & sign(v_targets_working_set(:, 2)) ~= sign(edge_speeds(end)));
             departure_timestep = min(v_targets_working_set(reverse_speed_target_idxs, 1));
-            [v_targets_working_set start_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition.timestep, false, departure_timestep, 0);
+            [v_targets_working_set start_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, false, departure_timestep, 0);
         else
             % Decide next edge
             next_edge_selection = 1 + round(switch_directions(size(events, 1)) * (length(viable_next_edges) - 1));
@@ -102,10 +102,10 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
 
                 planned_stops(planned_stops(:,2) == events(end,2), :) = 0; % Remove the stop
                 departure_timestep = min(edge_transition.timestep + params.dwell_timesteps, params.n_timesteps);
-                [v_targets_working_set start_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition.timestep, false, departure_timestep, 0);
+                [v_targets_working_set start_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, false, departure_timestep, 0);
             % Check for overspeed on entering new edge
             elseif abs(edge_transition.speed) > network.speed_limits(next_edge)
-                [v_targets_working_set start_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition.timestep, true, [], sign(edge_transition.speed) * network.speed_limits(next_edge));
+                [v_targets_working_set start_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, true, [], sign(edge_transition.speed) * network.speed_limits(next_edge));
             else 
                 v_targets_modified = false;
             end

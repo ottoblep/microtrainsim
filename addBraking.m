@@ -1,9 +1,9 @@
-function [v_targets start_braking_timestep] = addBraking(params, global_speeds, v_targets, previous_arrival_timestep, immediate_departure, hold_until_timestep, braking_goal_speed)
+function [v_targets start_braking_timestep] = addBraking(params, global_speeds, v_targets, edge_transition, immediate_departure, hold_until_timestep, braking_goal_speed)
     %% Modifies v targets so that train will reach a certain velocity before reaching a position specified by timestep on the old position curve
     v_target_timesteps = v_targets(:, 1);
     v_target_values = v_targets(:, 2);
 
-    start_braking_timestep = findBrakingTimestep(params, global_speeds, previous_arrival_timestep, braking_goal_speed);
+    start_braking_timestep = findBrakingTimestep(params, global_speeds, edge_transition, braking_goal_speed);
 
     % Consider only points after start of braking
     v_target_relevant_idxs = find(v_target_timesteps >= start_braking_timestep);
@@ -26,14 +26,14 @@ function [v_targets start_braking_timestep] = addBraking(params, global_speeds, 
     v_targets = [v_target_timesteps v_target_values];
 end
 
-function start_braking_timestep = findBrakingTimestep(params, global_speeds, previous_arrival_timestep, braking_goal_speed)
-    %% Find start_braking_timestep that undershoots the position at previous_arrival_timestep the littlest while braking with max_accel starting at start_braking_timestep
+function start_braking_timestep = findBrakingTimestep(params, global_speeds, edge_transition, braking_goal_speed)
+    %% Find start_braking_timestep that undershoots the position at edge_transition.timestep the littlest while braking with max_accel starting at start_braking_timestep
 
-    % global_speeds speeds from start of simulation until previous_arrival_timestep
-    assert(numel(global_speeds) == previous_arrival_timestep);
+    % global_speeds speeds from start of simulation until edge_transition.timestep
+    assert(numel(global_speeds) == edge_transition.timestep);
 
-    global_trajectory = zeros(1,previous_arrival_timestep);
-    global_trajectory(2:previous_arrival_timestep) = cumsum(global_speeds(1:previous_arrival_timestep - 1));
+    global_trajectory = zeros(1, edge_transition.timestep);
+    global_trajectory(2:edge_transition.timestep) = cumsum(global_speeds(1:edge_transition.timestep - 1));
 
     approach_direction = sign(global_speeds(end));
     % Only consider time since last direction change
@@ -43,8 +43,8 @@ function start_braking_timestep = findBrakingTimestep(params, global_speeds, pre
     end
 
     % Select timestep to start braking (will purposefully undershoot on position due to discretization)
-    candidate_timesteps = first_approach_idx:previous_arrival_timestep - 1;
-    target_position = global_trajectory(previous_arrival_timestep);
+    candidate_timesteps = first_approach_idx:edge_transition.timestep - 1;
+    target_position = global_trajectory(edge_transition.timestep) - approach_direction * edge_transition.extra_movement;
     abs_v_diff = abs(global_speeds(candidate_timesteps) - braking_goal_speed);
     required_braking_time = ceil(abs_v_diff / params.max_accel);
     dist_covered_while_braking = required_braking_time * braking_goal_speed + (0.5 * (required_braking_time - 1) * params.max_accel) + rem(abs_v_diff, params.max_accel);
