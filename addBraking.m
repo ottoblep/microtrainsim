@@ -13,8 +13,9 @@ function [v_targets start_braking_timestep] = addBraking(params, global_speeds, 
     % Stay stationary until departure
     % Dwell time only possible when stationary
     if not(immediate_departure)
-        idxs_v_targets_during_stop = (v_target_timesteps >= start_braking_timestep) & (v_target_timesteps < hold_until_timestep);
-        v_target_values(idxs_v_targets_during_stop) = braking_goal_speed;
+        idxs_v_targets_during_stop = find((v_target_timesteps >= start_braking_timestep) & (v_target_timesteps < hold_until_timestep));
+        v_target_values(idxs_v_targets_during_stop) = [];
+        v_target_timesteps(idxs_v_targets_during_stop) = [];
     end
 
     % Place speed target point of 0 at the start of braking 
