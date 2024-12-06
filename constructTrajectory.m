@@ -122,7 +122,7 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
             % Jump back to before earliest modified speed target point
             events = events(events(:, 1) < start_braking_timestep, :);
             if isempty(events)
-                events(1) = [1, initial_position(1), initial_position(2), initial_position(3), initial_speed];
+                events(1,:) = [1, initial_position(1), initial_position(2), initial_position(3), initial_speed];
             end
             continue;
         end
