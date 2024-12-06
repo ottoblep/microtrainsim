@@ -45,7 +45,7 @@ function start_braking_timestep = findBrakingTimestep(params, global_speeds, edg
     % Select timestep to start braking (will purposefully undershoot on position due to discretization)
     candidate_timesteps = first_approach_idx:edge_transition.timestep - 1;
     target_position = global_trajectory(edge_transition.timestep) - approach_direction * edge_transition.extra_movement;
-    abs_v_diff = abs(global_speeds(candidate_timesteps) - braking_goal_speed);
+    abs_v_diff = abs(global_speeds(candidate_timesteps)) - abs(braking_goal_speed);
     required_braking_time = ceil(abs_v_diff / params.max_accel);
     dist_covered_while_braking = required_braking_time * braking_goal_speed + (0.5 * (required_braking_time - 1) * params.max_accel) + rem(abs_v_diff, params.max_accel);
     dist_remaining_after_braking = abs(global_trajectory(candidate_timesteps) - target_position) - dist_covered_while_braking';
