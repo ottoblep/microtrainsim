@@ -32,7 +32,7 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
 
     % Aquire speed target points from solution
     v_target_timesteps = ceil(solution(1:params.n_v_target_vars) * params.n_timesteps);
-    [v_target_timesteps , unique_idxs, ~] = unique(v_target_timesteps);
+    [v_target_timesteps , unique_idxs, ~] = unique(v_target_timesteps, 'stable');
     v_target_values = solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars);
     v_target_values = (2 * v_target_values(unique_idxs) - 1) * params.max_speed;
     v_targets = [v_target_timesteps' v_target_values'];

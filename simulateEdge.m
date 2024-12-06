@@ -7,7 +7,7 @@ function [edge_transition edge_trajectory edge_speeds] = simulateEdge(network, p
         % v_target dimensions (n, 2)
         % v_target values (timestep [0,n], speed [-Inf,Inf])
 
-        assert(isequal(unique(v_targets(:,1)), v_targets(:,1)));
+        assert(isequal(unique(v_targets(:,1), 'stable'), v_targets(:,1)));
 
         % Data from here on starts at the initial edge state
         v_targets_cont_edge = interp1(v_targets(:,1), v_targets(:,2), initial_edge_state(1):params.n_timesteps, 'previous', 'extrap');
