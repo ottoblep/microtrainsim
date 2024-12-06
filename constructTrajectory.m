@@ -55,10 +55,8 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
         end
 
         % Adjust copy of speed targets for current edge speed limit
-        % Assumptions:
-        %   - Braking can only shift edge traversals backwards
-        %   - When jumping back multiple transitions these are inside the braking curve (fixed speed target)
-        %   - Adding more braking in this way can never exceed a previous speed limit
+
+        % Working set of v targets for this edge is modified by speed limit
         v_targets_working_set = v_targets;
         edge_target_idxs = find(v_targets(:,1) >= events(end,1));
         v_targets_working_set(edge_target_idxs, 2) = min(v_targets(edge_target_idxs, 2), network.speed_limits(events(end, 2)));
@@ -79,6 +77,10 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
         viable_next_edges = viable_next_edges(viable_next_edges~=events(end,1));
 
         % Further modify speed targets in case of constraint violations
+        % Assumptions:
+        %   - Braking can only shift edge traversals backwards
+        %   - When jumping back multiple transitions these are inside the braking curve (fixed speed target)
+        %   - Adding more braking in this way can never exceed a previous speed limit
 
         v_targets_modified = true;
         global_speeds = cat(1, traj(1:(events(end,1) - 1), 4), edge_speeds', edge_transition.speed);
