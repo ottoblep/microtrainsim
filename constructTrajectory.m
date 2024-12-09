@@ -32,10 +32,11 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
 
     % Aquire speed target points from solution
     v_target_timesteps = ceil(solution(1:params.n_v_target_vars) * params.n_timesteps);
-    [v_target_timesteps , unique_idxs, ~] = unique(v_target_timesteps, 'stable');
+    [v_target_timesteps, unique_idxs, ~] = unique(v_target_timesteps, 'stable');
     v_target_values = solution(params.n_v_target_vars + 1:2 * params.n_v_target_vars);
     v_target_values = (2 * v_target_values(unique_idxs) - 1) * params.max_speed;
     v_targets = [v_target_timesteps' v_target_values'];
+    clear v_target_values v_target_timesteps;
 
     % Events is the first train state for each new edge
     % Trajectory is the train state at each timestep
@@ -54,9 +55,8 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
             error("Speed limit could not be satisfied.");
         end
 
-        % Adjust copy of speed targets for current edge speed limit
-
         % Working set of v targets for this edge is modified by speed limit
+        % After processing the edge we later write the changes to the original v targets
         v_targets_working_set = v_targets;
         edge_target_idxs = find(v_targets(:,1) >= events(end,1));
         v_targets_working_set(edge_target_idxs, 2) = min(v_targets(edge_target_idxs, 2), network.speed_limits(events(end, 2)));
@@ -79,7 +79,7 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
         % Further modify speed targets in case of constraint violations
         % Assumptions:
         %   - Braking can only shift edge traversals backwards
-        %   - When jumping back multiple transitions these are inside the braking curve (fixed speed target)
+        %   - When jumping back multiple transitions these are inside the braking curve (fixed lower speed target)
         %   - Adding more braking in this way can never exceed a previous speed limit
 
         v_targets_modified = true;
@@ -90,7 +90,8 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
             % Stop train until speed target is in the other direction
             reverse_speed_target_idxs = (v_targets_working_set(:,1) >= edge_transition.timestep & sign(v_targets_working_set(:, 2)) ~= sign(edge_speeds(end)));
             departure_timestep = min(v_targets_working_set(reverse_speed_target_idxs, 1));
-            [v_targets_working_set start_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, false, departure_timestep, 0);
+            disp("Dead End");
+            [v_targets_working_set start_braking_timestep end_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, false, departure_timestep, 0);
         else
             % Decide next edge
             next_edge_selection = 1 + round(switch_directions(size(events, 1)) * (length(viable_next_edges) - 1));
@@ -104,24 +105,32 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
 
                 planned_stops(planned_stops(:,2) == events(end,2), :) = 0; % Remove the stop
                 departure_timestep = min(edge_transition.timestep + params.dwell_timesteps, params.n_timesteps);
-                [v_targets_working_set start_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, false, departure_timestep, 0);
+                disp("Planned Stop");
+                [v_targets_working_set start_braking_timestep end_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, false, departure_timestep, 0);
             % Check for overspeed on entering new edge
             elseif abs(edge_transition.speed) > network.speed_limits(next_edge)
-                [v_targets_working_set start_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, true, [], sign(edge_transition.speed) * network.speed_limits(next_edge));
+                disp("Speed Limit Adjust");
+                [v_targets_working_set start_braking_timestep end_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, true, [], sign(edge_transition.speed) * network.speed_limits(next_edge));
             else 
                 v_targets_modified = false;
             end
         end
 
+        % Find v targets relevant to this edge
         if v_targets_modified
-            % Write new v targets for braking curve
-            findVTargetIdxsOnEdge = @(x) find(x(:,1) >= start_braking_timestep & x(:,1) < edge_transition.timestep);
+            findVTargetIdxsOnEdge = @(x) find(x(:,1) >= events(end, 1) & x(:,1) < end_braking_timestep);
+        else
+            findVTargetIdxsOnEdge = @(x) find(x(:,1) >= events(end, 1) & x(:,1) < edge_transition.timestep);
+        end
 
-            v_targets(findVTargetIdxsOnEdge(v_targets), :) = [];
-            v_targets = cat(1, v_targets, v_targets_working_set(findVTargetIdxsOnEdge(v_targets_working_set), :));
+        % Remove old targets
+        v_targets(findVTargetIdxsOnEdge(v_targets), :) = [];
+        % Insert new targets
+        v_targets = cat(1, v_targets, v_targets_working_set(findVTargetIdxsOnEdge(v_targets_working_set), :));
 
-            assert(isequal(unique(v_targets(:,1), 'stable'), v_targets(:,1)));
+        assert(isequal(unique(v_targets(:,1), 'stable'), v_targets(:,1)));
 
+        if v_targets_modified
             % Jump back to before earliest modified speed target point
             events = events(events(:, 1) < start_braking_timestep, :);
             if isempty(events)
@@ -148,7 +157,7 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
         events(new_event_entry_idx, 4) = (-1) * (edge_entrance_point * 2 - 1) * edge_transition.node_traversal_direction; % New Orientation on Edge
         events(new_event_entry_idx, 5) = edge_transition.speed;
 
-        if abort > 1e2
+        if abort > 1e4
             error("Trajectory construction failed.");
         end
         abort = abort + 1;
