@@ -32,42 +32,35 @@ function [start_braking_timestep, end_braking_timestep] = findBrakingTimestep(pa
     global_trajectory(2:edge_transition.timestep) = cumsum(global_speeds(1:edge_transition.timestep - 1));
 
     % Only consider time since last direction change
-    first_approach_idx = find((sign(global_speeds) ~= sign(edge_transition.speed)) | (global_speeds == 0), 1, 'last');
-    if isempty(first_approach_idx)
-        first_approach_idx = 1;
-    end
-    %first_approach_idx = 1;
+    % first_approach_idx = find((sign(global_speeds) ~= sign(edge_transition.speed)) | (global_speeds == 0), 1, 'last');
+    % if isempty(first_approach_idx)
+    %     first_approach_idx = 1;
+    % end
+    first_approach_idx = 1;
 
     % Select timestep to start braking (will purposefully undershoot on position due to discretization)
     candidate_timesteps = first_approach_idx:edge_transition.timestep - 1;
     target_position = global_trajectory(edge_transition.timestep) - edge_transition.node_traversal_direction * edge_transition.extra_movement;
     abs_v_diff = abs(global_speeds(candidate_timesteps) - braking_goal_speed);
     required_braking_time = ceil(abs_v_diff / params.max_accel);
-    speed_reached_at = candidate_timesteps + required_braking_time';
+    goal_speed_reached_at = candidate_timesteps + required_braking_time';
     dist_covered_while_braking = required_braking_time * braking_goal_speed + (0.5 * (required_braking_time - 1) * params.max_accel) + rem(abs_v_diff, params.max_accel);
     dist_remaining_after_braking = abs(global_trajectory(candidate_timesteps) - target_position) - dist_covered_while_braking';
     
-    % Undershoot as little as possible
+    % Find latest possible braking point
     % Speed goal must be reached the step before the transition (p(n) = n(n-1) + v(n-1))
-    subset_braking_idxs = find(dist_remaining_after_braking > 0 & speed_reached_at < edge_transition.timestep - 1);
-
-    if isempty(subset_braking_idxs)
-        error("Failed to undershoot on braking.");
-        % subset_braking_idxs = 1:numel(dist_remaining_after_braking);
-    end
-
-    [~, best_subset_braking_idx] = min(abs(dist_remaining_after_braking(subset_braking_idxs)));
-    best_candidate_braking_idx = subset_braking_idxs(best_subset_braking_idx);
+    best_candidate_braking_idx = find(dist_remaining_after_braking > 0 & goal_speed_reached_at < edge_transition.timestep, 1, 'last');
 
     start_braking_timestep = candidate_timesteps(best_candidate_braking_idx);
-    end_braking_timestep = start_braking_timestep + required_braking_time(best_candidate_braking_idx);
-
-    if braking_goal_speed ~= 0
-        end_braking_timestep = end_braking_timestep + ceil(dist_remaining_after_braking(best_candidate_braking_idx) / abs(braking_goal_speed));
-    end
 
     if (isempty(start_braking_timestep) || start_braking_timestep > edge_transition.timestep || start_braking_timestep < 1)
         error("Failed to find braking timestep.");
         % start_braking_timestep = first_approach_idx;
+    end
+
+    end_braking_timestep = start_braking_timestep + required_braking_time(best_candidate_braking_idx);
+
+    if braking_goal_speed ~= 0
+        end_braking_timestep = end_braking_timestep + ceil(dist_remaining_after_braking(best_candidate_braking_idx) / abs(braking_goal_speed));
     end
 end
