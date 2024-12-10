@@ -88,8 +88,12 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
         % Check for dead end
         if isempty(viable_next_edges)
             % Stop train until speed target is in the other direction
-            reverse_speed_target_idxs = (v_targets_working_set(:,1) >= edge_transition.timestep & sign(v_targets_working_set(:, 2)) ~= sign(edge_speeds(end)));
-            departure_timestep = min(v_targets_working_set(reverse_speed_target_idxs, 1));
+            reverse_speed_target_idxs = find((v_targets_working_set(:,1) >= edge_transition.timestep & sign(v_targets_working_set(:, 2)) ~= sign(edge_speeds(end))));
+            if isempty(reverse_speed_target_idxs)
+                departure_timestep = params.n_timesteps;
+            else
+                departure_timestep = min(v_targets_working_set(reverse_speed_target_idxs, 1));
+            end
             disp("Dead End");
             [v_targets_working_set start_braking_timestep end_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, false, departure_timestep, 0);
         else
