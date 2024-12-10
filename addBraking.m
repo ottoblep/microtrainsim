@@ -1,8 +1,12 @@
 function [v_targets, start_braking_timestep, end_braking_timestep] = addBraking(params, global_speeds, v_targets, edge_transition, immediate_departure, hold_until_timestep, braking_goal_speed)
     %% Returns a subset of v_targets modified so that train will reach a certain velocity before reaching the new edge specified in edge_transition
-    assert(abs(edge_transition.speed) > abs(braking_goal_speed));
+    % Braking goal speed must have the right direction already
+    assert(abs(edge_transition.speed) >= abs(braking_goal_speed));
     % global_speeds ranges from start of simulation until edge_transition.timestep
     assert(numel(global_speeds) == edge_transition.timestep);
+
+    % Ensure directionality
+    braking_goal_speed = edge_transition.node_traversal_direction * abs(braking_goal_speed);
 
     v_target_timesteps = v_targets(:, 1);
     v_target_values = v_targets(:, 2);
@@ -20,14 +24,14 @@ function [v_targets, start_braking_timestep, end_braking_timestep] = addBraking(
 
     % Place speed target point of 0 at the start of braking 
     v_target_timesteps(end+1) = start_braking_timestep;
-    v_target_values(end+1) = edge_transition.node_traversal_direction * braking_goal_speed;
+    v_target_values(end+1) = braking_goal_speed;
 
     v_targets = [v_target_timesteps v_target_values];
 end
 
 function [start_braking_timestep, end_braking_timestep] = findBrakingTimestep(params, global_speeds, edge_transition, braking_goal_speed)
     %% Find start_braking_timestep that undershoots the position at edge_transition.timestep the littlest while braking with max_accel starting at start_braking_timestep
-
+    
     global_trajectory = zeros(1, edge_transition.timestep);
     global_trajectory(2:edge_transition.timestep) = cumsum(global_speeds(1:edge_transition.timestep - 1));
 
