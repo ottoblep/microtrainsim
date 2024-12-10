@@ -18,7 +18,7 @@ function [v_targets, start_braking_timestep, end_braking_timestep] = addBraking(
         end_braking_timestep = hold_until_timestep;
     end
 
-    idxs_v_targets_during_braking = find((v_target_timesteps >= start_braking_timestep) & (v_target_timesteps < end_braking_timestep));
+    idxs_v_targets_during_braking = find((v_target_timesteps >= start_braking_timestep) & (v_target_timesteps <= end_braking_timestep));
     v_target_values(idxs_v_targets_during_braking) = [];
     v_target_timesteps(idxs_v_targets_during_braking) = [];
 

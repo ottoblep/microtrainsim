@@ -122,15 +122,15 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
 
         % Find v targets relevant to this edge
         if v_targets_modified
-            last_edge_relevant_timestep = end_braking_timestep;
+            findVTargetIdxsOnEdge = @(x) find(x(:,1) >= min(events(end, 1), start_braking_timestep) & x(:,1) <= end_braking_timestep);
         else
-            last_edge_relevant_timestep = edge_transition.timestep;
+            findVTargetIdxsOnEdge = @(x) find(x(:,1) >= events(end, 1) & x(:,1) <= edge_transition.timestep);
         end
 
         % Remove old targets
-        v_targets(findVTargetIdxsInTimerange(v_targets, events(end,1), last_edge_relevant_timestep), :) = [];
+        v_targets(findVTargetIdxsOnEdge(v_targets), :) = [];
         % Insert new targets
-        v_targets = cat(1, v_targets, v_targets_working_set(findVTargetIdxsInTimerange(v_targets_working_set, events(end,1), last_edge_relevant_timestep), :));
+        v_targets = cat(1, v_targets, v_targets_working_set(findVTargetIdxsOnEdge(v_targets_working_set), :));
 
         assert(isequal(unique(v_targets(:,1), 'stable'), v_targets(:,1)));
 
@@ -166,8 +166,4 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
         end
         abort = abort + 1;
     end
-end
-
-function idxs = findVTargetIdxsInTimerange(x, start_timestep, end_timestep)
-    idxs = find(x(:,1) >= start_timestep & x(:,1) < end_timestep);
 end
