@@ -9,6 +9,10 @@ function [edge_transition edge_trajectory edge_speeds] = simulateEdge(network, p
 
         assert(isequal(unique(v_targets(:,1), 'stable'), v_targets(:,1)));
 
+        % Extrapolate to beginning
+        if ~ismember(1, v_targets(:,1))
+            v_targets(end+1, :) = [1 initial_edge_state(5)];
+        end
         % Data from here on starts at the initial edge state
         v_targets_cont_edge = interp1(v_targets(:,1), v_targets(:,2), initial_edge_state(1):params.n_timesteps, 'previous', 'extrap');
 
@@ -37,6 +41,8 @@ function [edge_transition edge_trajectory edge_speeds] = simulateEdge(network, p
                 break;
             end
         end
+
+        assert(not(any(isnan(edge_trajectory))));
 
         % If no other transition exists the simulation is finished
         if isempty(edge_transition) return; end
