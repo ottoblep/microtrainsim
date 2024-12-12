@@ -1,4 +1,4 @@
-function [traj, events] = constructTrajectory(network, params, solution, initial_position, initial_speed, planned_stops)
+function [traj, events, n_fullfilled_stops] = constructTrajectory(network, params, solution, initial_position, initial_speed, planned_stops)
     %% Constructs a single train trajectory on the graph
     % Also iteratively enforces scheduled edges, dead ends and speed limits by adjusting speed targets
     % Simulation is based on edge change events then trajectory is filled with continuous positions
@@ -48,6 +48,7 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
     traj(1,:) = events(1, 2:5); 
 
     abort = 0;
+    n_fullfilled_stops = 0;
     while true
         assert(all(all(events(:, 1:2) ~= 0)));
 
@@ -128,9 +129,12 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
                     error("Planned stops must not be on adjacent edges.")
                 end
 
-                planned_stops(planned_stops(:,2) == events(end,2), :) = 0; % Remove the stop
+                planned_stops(planned_stops(:,2) == events(end,2), :) = []; % Remove the stop
                 departure_timestep = min(edge_transition.timestep + params.dwell_timesteps, params.n_timesteps);
                 [v_targets_working_set start_braking_timestep end_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, false, departure_timestep, 0);
+
+                n_fullfilled_stops = n_fullfilled_stops + 1;
+
             % Check for overspeed on entering new edge
             elseif abs(edge_transition.speed) > network.speed_limits(next_edge)
                 [v_targets_working_set start_braking_timestep end_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, true, [], network.speed_limits(next_edge));

@@ -2,12 +2,9 @@ function greedyHeuristicFormulation()
     [network, params] = generateEnvironment("crossover");
     assert(all(network.edge_values > params.max_speed)); % Requirement for trajectory construction
 
-    solution = randomSolution(params);
-    [traj_set event_set] = constructTrajectorySet(network, params, solution);
-
-    % [solution, traj_set] = greedySearch(network, params, 15, 0.1);
+    [solution, traj_set] = greedySearch(network, params, 15, 0.1);
     %[solution, traj_set] = geneticGlobalSearch(network, params);
-    %[solution, falsetraj_set] = particleSwarmSearch(network, params);
+    %[solution, traj_set] = particleSwarmSearch(network, params);
 
     %[solution, traj_set] = repairHeuristic(network, params, solution, traj_set);
     
@@ -35,7 +32,7 @@ function [traj_set, event_set, n_fullfilled_stops] = constructTrajectorySet(netw
     % planned stops dimenstions (n, 3)
     % planned stops values (train, edge, arrival_time_fraction_of_timesteps)
 
-    % traj_set dimensions (n_trains, 3, timestep)
+    % traj_set dimensions (n_trains, timestep, 4)
 
     % event_set dimensions (n, 3))
     % event_set values (train, timestep, presence_at_node)
@@ -43,10 +40,12 @@ function [traj_set, event_set, n_fullfilled_stops] = constructTrajectorySet(netw
     n_trains = size(solution,1);
     event_set = [];
     traj_set = zeros(n_trains, params.n_timesteps, 4);
+    n_fullfilled_stops = 0;
     for i_train = 1:n_trains
-        [traj_set(i_train, :, :), new_events] = constructTrajectory(network, params, solution(i_train,:), params.initial_positions(i_train, :), params.initial_speeds(i_train), params.planned_stops(params.planned_stops(:,1)==i_train, 2:3));
+        [traj_set(i_train, :, :), new_events, n_fullfilled_stops_train] = constructTrajectory(network, params, solution(i_train,:), params.initial_positions(i_train, :), params.initial_speeds(i_train), params.planned_stops(params.planned_stops(:,1)==i_train, 2:3));
         new_events(:, 1) = i_train;
         event_set = cat(1, event_set, new_events);
+        n_fullfilled_stops = n_fullfilled_stops + n_fullfilled_stops_train;
     end
 end
 
@@ -87,7 +86,7 @@ function collision_score = collisionPenalties(network, traj_set, min_separation,
     % Separation Penalties
     % For each train pair update the minimum time to collision then skip that time and check again
     n_trains = size(traj_set, 1);
-    n_timesteps = size(traj_set, 3);
+    n_timesteps = size(traj_set, 2);
     
     for i_train = 1:n_trains
         for j_train = i_train+1:n_trains
@@ -118,12 +117,12 @@ function destination_score = destinationPenalties(network, traj_set, destination
     destination_score = 0;
 
     for i_train = 1:size(traj_set, 1)
-        edge_i = int32(traj_set(i_train, 1, size(traj_set, 3)));
-        i_edge_length = network.edge_values(edge_i);
+        edge_at_last_timestep = int32(traj_set(i_train, size(traj_set, 2), 1));
+        i_edge_length = network.edge_values(edge_at_last_timestep);
         % Find shortest path with precomputed distance matrix
-        i_node_backward = network.edge_rows(edge_i);
-        i_node_forward = network.edge_cols(edge_i);
-        i_remaining_backward_length = traj_set(i_train, 2, size(traj_set, 3)) * i_edge_length;
+        i_node_backward = network.edge_rows(edge_at_last_timestep);
+        i_node_forward = network.edge_cols(edge_at_last_timestep);
+        i_remaining_backward_length = traj_set(i_train, size(traj_set, 2), 2) * i_edge_length;
         i_remaining_forward_length = i_edge_length - i_remaining_backward_length;
         dist1 = i_remaining_backward_length + network.all_shortest_paths(i_node_backward, destinations(i_train));
         dist2 = i_remaining_forward_length + network.all_shortest_paths(i_node_forward, destinations(i_train));
