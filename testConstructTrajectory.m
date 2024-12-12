@@ -9,4 +9,6 @@ for i = 1:1000
     assert(all(traj(:,2) >= 0) && all(traj(:,2) <= 1));
     % Speed limits
     assert(all(abs(traj(:,4))' <= network.speed_limits(traj(:,1)) + 1e-14));
+    % Accelerations
+    assert(all(abs(diff(traj(:,4)))' <= params.max_accel + 1e-14));
 end
