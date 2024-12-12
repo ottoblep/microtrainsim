@@ -7,4 +7,6 @@ for i = 1:1000
     % Parameter bounds
     assert(not(any(any(isnan(traj)))));
     assert(all(traj(:,2) >= 0) && all(traj(:,2) <= 1));
+    % Speed limits
+    assert(all(abs(traj(:,4))' <= network.speed_limits(traj(:,1)) + 1e-14));
 end

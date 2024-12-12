@@ -82,6 +82,16 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
             traj(events(end,1):params.n_timesteps, 2) = edge_trajectory;
             traj(events(end,1):params.n_timesteps, 3) = events(end, 4);
             traj(events(end,1):params.n_timesteps, 4) = edge_speeds;
+
+            % % Speed limit adherence
+            % clf; hold on;
+            % plot(traj(:,4));
+            % plot(network.speed_limits(traj(:,1)));
+            % plot(-network.speed_limits(traj(:,1)));
+            % scatter(v_targets(:, 1), v_targets(:, 2));
+            % % TODO: why a conditioning error sometimes
+            % assert(all(abs(traj(:,4))' <= network.speed_limits(traj(:,1)) + 1e-14));
+
             break;
         end
 
@@ -106,7 +116,6 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
             else
                 departure_timestep = min(v_targets_working_set(reverse_speed_target_idxs, 1));
             end
-            disp("Dead End");
             [v_targets_working_set start_braking_timestep end_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, false, departure_timestep, 0);
         else
             % Decide next edge
@@ -121,11 +130,9 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
 
                 planned_stops(planned_stops(:,2) == events(end,2), :) = 0; % Remove the stop
                 departure_timestep = min(edge_transition.timestep + params.dwell_timesteps, params.n_timesteps);
-                disp("Planned Stop");
                 [v_targets_working_set start_braking_timestep end_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, false, departure_timestep, 0);
             % Check for overspeed on entering new edge
             elseif abs(edge_transition.speed) > network.speed_limits(next_edge)
-                disp("Speed Limit Adjust");
                 [v_targets_working_set start_braking_timestep end_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, true, [], network.speed_limits(next_edge));
             else 
                 v_targets_modified = false;
@@ -162,15 +169,6 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
         traj(events(end,1):edge_transition.timestep - 1, 2) = edge_trajectory;
         traj(events(end,1):edge_transition.timestep - 1, 3) = events(end, 4);
         traj(events(end,1):edge_transition.timestep - 1, 4) = edge_speeds;
-
-        % Speed limit adherence
-        clf; hold on;
-        plot(traj(:,4));
-        plot(network.speed_limits(traj(:,1)));
-        plot(-network.speed_limits(traj(:,1)));
-        scatter(v_targets(:, 1), v_targets(:, 2));
-        % TODO: why a conditioning error sometimes
-        assert(all(abs(traj(:,4))' <= network.speed_limits(traj(:,1)) + 1e-14));
 
         % Write initial state for next edge
         edge_entrance_point = (network.edge_cols(next_edge) == edge_transition.traversed_node);
