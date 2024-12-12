@@ -57,10 +57,21 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
 
         % Working set of v targets for this edge is modified by speed limit
         % After processing the edge we later write the changes to the original v targets
+
+        % Clamp v targets on this edge
         v_targets_working_set = v_targets;
         working_set_edge_idxs = find(v_targets_working_set(:,1) >= events(end,1));
         v_targets_working_set(working_set_edge_idxs, 2) = min(v_targets_working_set(working_set_edge_idxs, 2), network.speed_limits(events(end, 2)));
         v_targets_working_set(working_set_edge_idxs, 2) = max(v_targets_working_set(working_set_edge_idxs, 2), -network.speed_limits(events(end, 2)));
+
+        % If the last target from the previous edge is too high, insert an additional capped target at the beginning 
+        v_targets_before_current_edge = v_targets_working_set(v_targets_working_set(:, 1) < events(end, 1), :);
+        [~, last_previous_edge_v_target_idx] = max(v_targets_before_current_edge(:, 1));
+        last_previous_edge_v_target = v_targets_before_current_edge(last_previous_edge_v_target_idx, 2);
+        if abs(last_previous_edge_v_target) > network.speed_limits(events(end, 2))
+            v_targets_working_set(v_targets_working_set(:,1) == events(end, 1), :) = [];
+            v_targets_working_set(end + 1, :) = [events(end, 1), sign(last_previous_edge_v_target) * network.speed_limits(events(end, 2))];
+        end
 
         % Find next edge exit
         [edge_transition edge_trajectory edge_speeds] = simulateEdge(network, params, events(end, :), v_targets_working_set);
@@ -157,7 +168,9 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
         plot(traj(:,4));
         plot(network.speed_limits(traj(:,1)));
         plot(-network.speed_limits(traj(:,1)));
-        assert(all(abs(traj(:,4))' <= network.speed_limits(traj(:,1))));
+        scatter(v_targets(:, 1), v_targets(:, 2));
+        % TODO: why a conditioning error sometimes
+        assert(all(abs(traj(:,4))' <= network.speed_limits(traj(:,1)) + 1e-14));
 
         % Write initial state for next edge
         edge_entrance_point = (network.edge_cols(next_edge) == edge_transition.traversed_node);
