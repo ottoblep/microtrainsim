@@ -2,21 +2,24 @@ function greedyHeuristicFormulation()
     [network, params] = generateEnvironment("crossover");
     assert(all(network.edge_values > params.max_speed)); % Requirement for trajectory construction
 
-    [solution, traj_set] = greedySearch(network, params, 15, 0.1);
+    solution = randomSolution(params);
+    [traj_set event_set] = constructTrajectorySet(network, params, solution);
+
+    % [solution, traj_set] = greedySearch(network, params, 15, 0.1);
     %[solution, traj_set] = geneticGlobalSearch(network, params);
     %[solution, falsetraj_set] = particleSwarmSearch(network, params);
 
     %[solution, traj_set] = repairHeuristic(network, params, solution, traj_set);
     
-    [solution, traj_set] = refineSolution(network, params, solution, traj_set);
+    % [solution, traj_set] = refineSolution(network, params, solution, traj_set);
 
-    final_collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed)
-    final_destination_score = destinationPenalties(network, traj_set, params.destinations)
-    [~, ~, final_n_fullfilled_stops] = constructTrajectorySet(network, params, solution)
+    % final_collision_score = collisionPenalties(network, traj_set, params.min_separation, params.max_speed)
+    % final_destination_score = destinationPenalties(network, traj_set, params.destinations)
+    % [~, ~, final_n_fullfilled_stops] = constructTrajectorySet(network, params, solution)
 
     csvwrite("network.csv", network.adjacency_matrix);
-    csvwrite("trajectories_edges.csv", squeeze(traj_set(:,1,:)));
-    csvwrite("trajectories_positions.csv", squeeze(traj_set(:,2,:)));
+    csvwrite("trajectories_edges.csv", squeeze(traj_set(:,:,1)));
+    csvwrite("trajectories_positions.csv", squeeze(traj_set(:,:,2)));
 end
 
 %% Solution Construction
@@ -39,13 +42,11 @@ function [traj_set, event_set, n_fullfilled_stops] = constructTrajectorySet(netw
 
     n_trains = size(solution,1);
     event_set = [];
-    traj_set = zeros(n_trains, 3, params.n_timesteps);
-    n_fullfilled_stops = 0;
+    traj_set = zeros(n_trains, params.n_timesteps, 4);
     for i_train = 1:n_trains
-        [traj_set(i_train, :, :), new_events, n_fullfilled_stops_train] = constructTrajectory(network, params, solution(i_train,:), params.initial_positions(i_train, :), params.initial_speeds(i_train), params.planned_stops(params.planned_stops(:,1)==i_train, 2:3));
+        [traj_set(i_train, :, :), new_events] = constructTrajectory(network, params, solution(i_train,:), params.initial_positions(i_train, :), params.initial_speeds(i_train), params.planned_stops(params.planned_stops(:,1)==i_train, 2:3));
         new_events(:, 1) = i_train;
         event_set = cat(1, event_set, new_events);
-        n_fullfilled_stops = n_fullfilled_stops + n_fullfilled_stops_train;
     end
 end
 
