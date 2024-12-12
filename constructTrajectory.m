@@ -151,6 +151,13 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
         traj(events(end,1):edge_transition.timestep - 1, 3) = events(end, 4);
         traj(events(end,1):edge_transition.timestep - 1, 4) = edge_speeds;
 
+        % Speed limit adherence
+        clf; hold on;
+        plot(traj(:,4));
+        plot(network.speed_limits(traj(:,1)));
+        plot(-network.speed_limits(traj(:,1)));
+        assert(all(abs(traj(:,4))' <= network.speed_limits(traj(:,1))));
+
         % Write initial state for next edge
         edge_entrance_point = (network.edge_cols(next_edge) == edge_transition.traversed_node);
         new_event_entry_idx = size(events, 1) + 1;
