@@ -58,8 +58,9 @@ function [traj, events] = constructTrajectory(network, params, solution, initial
         % Working set of v targets for this edge is modified by speed limit
         % After processing the edge we later write the changes to the original v targets
         v_targets_working_set = v_targets;
-        edge_target_idxs = find(v_targets(:,1) >= events(end,1));
-        v_targets_working_set(edge_target_idxs, 2) = min(v_targets(edge_target_idxs, 2), network.speed_limits(events(end, 2)));
+        working_set_edge_idxs = find(v_targets_working_set(:,1) >= events(end,1));
+        v_targets_working_set(working_set_edge_idxs, 2) = min(v_targets_working_set(working_set_edge_idxs, 2), network.speed_limits(events(end, 2)));
+        v_targets_working_set(working_set_edge_idxs, 2) = max(v_targets_working_set(working_set_edge_idxs, 2), -network.speed_limits(events(end, 2)));
 
         % Find next edge exit
         [edge_transition edge_trajectory edge_speeds] = simulateEdge(network, params, events(end, :), v_targets_working_set);
