@@ -39,24 +39,24 @@ function [start_braking_timestep, end_braking_timestep] = findBrakingTimestep(pa
 
     % Select timestep to start braking 
     % Will purposefully undershoot on position due to discretization
-    % Candidate timesteps are the steps where braking actually takes effect 
-    % start_braking_timestep (speed target point) is 1 timestep earlier due to propagation delay
-    candidate_timesteps = 2:edge_transition.timestep;
+    candidate_timesteps = 1:edge_transition.timestep - 1;
     abs_diff_to_target_speed = abs(global_speeds(candidate_timesteps) - braking_goal_speed);
     required_braking_time = ceil(abs_diff_to_target_speed / params.max_accel);
     goal_speed_reached_at = candidate_timesteps + required_braking_time';
     accel_direction = sign(braking_goal_speed - global_speeds(candidate_timesteps));
+
     % We need a general integral here including zero crossings that can happen
     dist_covered_while_braking = global_speeds(candidate_timesteps) .* required_braking_time ...
-                                 + accel_direction .* (0.5 * (required_braking_time + 1) .* required_braking_time * params.max_accel);
+                                + accel_direction .* (0.5 * (required_braking_time - 1) .* required_braking_time * params.max_accel);
+
     % Overshot = negative dist remaining
-    dist_remaining_after_braking = target_position - global_trajectory(candidate_timesteps) - dist_covered_while_braking';
+    dist_remaining_after_braking = sign(target_position - global_trajectory(candidate_timesteps)) .* (target_position - global_trajectory(candidate_timesteps) + dist_covered_while_braking');
     
     % Find latest possible braking point
     % Speed goal must be reached the step before the transition (p(n) = n(n-1) + v(n-1))
     best_candidate_braking_idx = find(dist_remaining_after_braking >= 0 & goal_speed_reached_at <= edge_transition.timestep, 1, 'last');
 
-    start_braking_timestep = candidate_timesteps(best_candidate_braking_idx) - 1;
+    start_braking_timestep = candidate_timesteps(best_candidate_braking_idx);
 
     if (isempty(start_braking_timestep) || start_braking_timestep > edge_transition.timestep || start_braking_timestep < 1)
         error("Failed to find braking timestep.");
