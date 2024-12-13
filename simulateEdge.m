@@ -29,7 +29,7 @@ function [edge_transition edge_trajectory edge_speeds] = simulateEdge(network, p
         for i = 2:params.n_timesteps - initial_edge_state(1) + 1
             speed_disparity = v_targets_cont_edge(i-1) - edge_speeds(i-1);
             edge_speeds(i) = edge_speeds(i-1) + sign(speed_disparity) * min(abs(speed_disparity), params.max_accel);
-            edge_trajectory(i) = edge_trajectory(i-1) + (initial_edge_state(4) * edge_speeds(i-1) * edge_length_divisor);
+            edge_trajectory(i) = edge_trajectory(i-1) + (initial_edge_state(4) * edge_speeds(i) * edge_length_divisor);
 
             if edge_trajectory(i) > 1
                 edge_exit_point = 1;
