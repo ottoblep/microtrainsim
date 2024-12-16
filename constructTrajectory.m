@@ -52,7 +52,7 @@ function [traj, events, n_fullfilled_stops] = constructTrajectory(network, param
     while true
         assert(all(all(events(:, 1:2) ~= 0)));
 
-        if (events(end, 5) > network.speed_limits(events(end,2)) || events(end, 5) > params.max_speed)
+        if (events(end, 5) > network.speed_limits(events(end,2)) + 1e-14 || events(end, 5) > params.max_speed)
             error("Speed limit could not be satisfied.");
         end
 
@@ -136,7 +136,7 @@ function [traj, events, n_fullfilled_stops] = constructTrajectory(network, param
                 n_fullfilled_stops = n_fullfilled_stops + 1;
 
             % Check for overspeed on entering new edge
-            elseif abs(edge_transition.speed) > network.speed_limits(next_edge)
+            elseif abs(edge_transition.speed) > network.speed_limits(next_edge) + 1e-14
                 [v_targets_working_set start_braking_timestep end_braking_timestep] = addBraking(params, global_speeds, v_targets_working_set, edge_transition, true, [], network.speed_limits(next_edge));
             else 
                 v_targets_modified = false;
