@@ -2,7 +2,7 @@
   description = "microtrainsim flake";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     nix-matlab = {
       url = "gitlab:doronbehar/nix-matlab";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -28,7 +28,7 @@
 
           shellHook = nix-matlab.shellHooksCommon;
 
-          packages = with pkgs; with pkgs.python311Packages; [
+          packages = with pkgs; with pkgs.python312Packages; [
             (python3.withPackages (python-pkgs: [
               pandas
               numpy
